@@ -8,8 +8,8 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { getWeekStart, getWeekDate, projects, clients } from '@/data/seed';
-import { formatDuration, getBillableLabel } from '@/types';
+import { getWeekStart, getWeekDate } from '@/data/seed';
+import { formatDuration, getBillableLabel, toTotalMinutes } from '@/types';
 
 interface ExportButtonProps {
   weekStart?: string;
@@ -35,23 +35,36 @@ export function ExportButton({ weekStart = getWeekStart() }: ExportButtonProps) 
       'Date',
       'Project Code',
       'Project Name',
-      'Client',
-      'Duration (minutes)',
+      'Phase',
+      'Activity Type',
+      'Task Description',
+      'Deliverable Type',
+      'Deliverable Description',
+      'Hours',
+      'Minutes',
       'Duration (hours)',
       'Billable Status',
-      'Description',
+      'Comments',
     ];
 
-    const rows = entries.map(entry => [
-      entry.date,
-      entry.project.code,
-      entry.project.name,
-      entry.project.client.name,
-      entry.durationMinutes.toString(),
-      (entry.durationMinutes / 60).toFixed(2),
-      getBillableLabel(entry.billableStatus),
-      `"${entry.description.replace(/"/g, '""')}"`,
-    ]);
+    const rows = entries.map(entry => {
+      const totalMins = toTotalMinutes(entry.hours, entry.minutes);
+      return [
+        entry.date,
+        entry.project.code,
+        entry.project.name,
+        entry.phase.name,
+        entry.activityType.name,
+        `"${entry.taskDescription.replace(/"/g, '""')}"`,
+        entry.deliverableType,
+        `"${(entry.deliverableDescription || '').replace(/"/g, '""')}"`,
+        entry.hours.toString(),
+        entry.minutes.toString(),
+        (totalMins / 60).toFixed(2),
+        getBillableLabel(entry.billableStatus),
+        `"${(entry.comments || '').replace(/"/g, '""')}"`,
+      ];
+    });
 
     const csv = [headers.join(','), ...rows.map(row => row.join(','))].join('\n');
     
@@ -65,6 +78,8 @@ export function ExportButton({ weekStart = getWeekStart() }: ExportButtonProps) 
     
     // Group entries by project
     const projectTotals = entries.reduce((acc, entry) => {
+      const totalMins = toTotalMinutes(entry.hours, entry.minutes);
+      
       if (!acc[entry.projectId]) {
         acc[entry.projectId] = {
           project: entry.project,
@@ -74,8 +89,8 @@ export function ExportButton({ weekStart = getWeekStart() }: ExportButtonProps) 
       }
       const dayIndex = dailyTotals.findIndex(d => d.date === entry.date);
       if (dayIndex >= 0) {
-        acc[entry.projectId].days[dayIndex] += entry.durationMinutes;
-        acc[entry.projectId].total += entry.durationMinutes;
+        acc[entry.projectId].days[dayIndex] += totalMins;
+        acc[entry.projectId].total += totalMins;
       }
       return acc;
     }, {} as Record<string, { 
@@ -88,7 +103,6 @@ export function ExportButton({ weekStart = getWeekStart() }: ExportButtonProps) 
     const headers = [
       'Project Code',
       'Project Name',
-      'Client',
       ...dayNames.map((d, i) => `${d} (${new Date(dailyTotals[i].date).getDate()})`),
       'Total',
     ];
@@ -96,14 +110,12 @@ export function ExportButton({ weekStart = getWeekStart() }: ExportButtonProps) 
     const rows = Object.values(projectTotals).map(pt => [
       pt.project.code,
       pt.project.name,
-      pt.project.client.name,
       ...pt.days.map(d => (d / 60).toFixed(2)),
       (pt.total / 60).toFixed(2),
     ]);
 
     // Add totals row
     const dailyTotalsRow = [
-      '',
       '',
       'Daily Total',
       ...dailyTotals.map(d => (d.totalMinutes / 60).toFixed(2)),

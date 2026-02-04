@@ -2,15 +2,15 @@ import React, { createContext, useContext, useState, ReactNode, useCallback } fr
 import { 
   TimeEntry, 
   WeekStatus, 
-  TimeEntryWithProject, 
+  TimeEntryWithDetails, 
   WeekSummary, 
   DailyTotal,
-  ProjectWithClient 
+  toTotalMinutes,
 } from '@/types';
 import { 
   timeEntries as seedTimeEntries, 
   weekStatuses as seedWeekStatuses, 
-  getProjectWithClient,
+  getEntryWithDetails,
   getWeekDate 
 } from '@/data/seed';
 
@@ -20,7 +20,7 @@ interface TimeEntriesContextType {
   addEntry: (entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateEntry: (id: string, updates: Partial<TimeEntry>) => void;
   deleteEntry: (id: string) => void;
-  getEntriesForWeek: (userId: string, weekStart: string) => TimeEntryWithProject[];
+  getEntriesForWeek: (userId: string, weekStart: string) => TimeEntryWithDetails[];
   getWeekSummary: (userId: string, weekStart: string) => WeekSummary;
   getDailyTotals: (userId: string, weekStart: string) => DailyTotal[];
   submitWeek: (userId: string, weekStart: string) => void;
@@ -58,19 +58,13 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const getEntriesForWeek = useCallback(
-    (userId: string, weekStart: string): TimeEntryWithProject[] => {
+    (userId: string, weekStart: string): TimeEntryWithDetails[] => {
       const weekDates = Array.from({ length: 7 }, (_, i) => getWeekDate(weekStart, i));
       
       return entries
         .filter(entry => entry.userId === userId && weekDates.includes(entry.date))
-        .map(entry => {
-          const projectWithClient = getProjectWithClient(entry.projectId);
-          return {
-            ...entry,
-            project: projectWithClient as ProjectWithClient,
-          };
-        })
-        .filter(entry => entry.project !== null);
+        .map(entry => getEntryWithDetails(entry))
+        .filter((entry): entry is TimeEntryWithDetails => entry !== null);
     },
     [entries]
   );
@@ -79,24 +73,23 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     (userId: string, weekStart: string): WeekSummary => {
       const weekEntries = getEntriesForWeek(userId, weekStart);
       
-      const entriesByDay: Record<string, TimeEntryWithProject[]> = {};
-      const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      const entriesByDay: Record<string, TimeEntryWithDetails[]> = {};
       
       for (let i = 0; i < 7; i++) {
         const date = getWeekDate(weekStart, i);
         entriesByDay[date] = weekEntries.filter(e => e.date === date);
       }
 
-      const totalMinutes = weekEntries.reduce((sum, e) => sum + e.durationMinutes, 0);
+      const getTotalMinutes = (entry: TimeEntryWithDetails) => 
+        toTotalMinutes(entry.hours, entry.minutes);
+
+      const totalMinutes = weekEntries.reduce((sum, e) => sum + getTotalMinutes(e), 0);
       const billableMinutes = weekEntries
         .filter(e => e.billableStatus === 'billable')
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
-      const maybeBillableMinutes = weekEntries
-        .filter(e => e.billableStatus === 'maybe_billable')
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
+        .reduce((sum, e) => sum + getTotalMinutes(e), 0);
       const notBillableMinutes = weekEntries
         .filter(e => e.billableStatus === 'not_billable')
-        .reduce((sum, e) => sum + e.durationMinutes, 0);
+        .reduce((sum, e) => sum + getTotalMinutes(e), 0);
 
       const status = weekStatuses.find(
         ws => ws.userId === userId && ws.weekStartDate === weekStart
@@ -106,7 +99,6 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         weekStartDate: weekStart,
         totalMinutes,
         billableMinutes,
-        maybeBillableMinutes,
         notBillableMinutes,
         entriesByDay,
         status,
@@ -123,7 +115,10 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
       return Array.from({ length: 7 }, (_, i) => {
         const date = getWeekDate(weekStart, i);
         const dayEntries = weekEntries.filter(e => e.date === date);
-        const totalMinutes = dayEntries.reduce((sum, e) => sum + e.durationMinutes, 0);
+        const totalMinutes = dayEntries.reduce(
+          (sum, e) => sum + toTotalMinutes(e.hours, e.minutes), 
+          0
+        );
         
         return {
           date,
