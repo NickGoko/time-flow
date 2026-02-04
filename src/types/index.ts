@@ -1,6 +1,6 @@
 // Core types for Time Registration App
 
-export type BillableStatus = 'billable' | 'maybe_billable' | 'not_billable';
+export type BillableStatus = 'billable' | 'not_billable';
 
 export interface User {
   id: string;
@@ -8,34 +8,51 @@ export interface User {
   email: string;
   department: string;
   role: string;
-  weeklyExpectedHours: number; // Default 40
+  weeklyExpectedHours: number;
   avatarUrl?: string;
-}
-
-export interface Client {
-  id: string;
-  name: string;
-  isInternal: boolean;
-  isActive: boolean;
 }
 
 export interface Project {
   id: string;
   name: string;
-  clientId: string;
-  code: string; // e.g., "PRJ-001"
+  code: string;
   isActive: boolean;
   defaultBillableStatus: BillableStatus;
 }
+
+export interface Phase {
+  id: string;
+  name: string;
+}
+
+export interface ActivityType {
+  id: string;
+  name: string;
+  phaseId: string;
+}
+
+export type DeliverableType = 
+  | 'workshop'
+  | 'reporting'
+  | 'training'
+  | 'event'
+  | 'case_study'
+  | 'other';
 
 export interface TimeEntry {
   id: string;
   userId: string;
   projectId: string;
+  phaseId: string;
+  activityTypeId: string;
+  taskDescription: string; // mandatory
+  deliverableType: DeliverableType;
+  deliverableDescription?: string; // optional
   date: string; // ISO date string (YYYY-MM-DD)
-  durationMinutes: number; // Must be divisible by 15
-  description: string;
+  hours: number; // 0-8
+  minutes: number; // 0, 15, 30, 45
   billableStatus: BillableStatus;
+  comments?: string; // optional
   createdAt: string;
   updatedAt: string;
 }
@@ -50,21 +67,18 @@ export interface WeekStatus {
 }
 
 // Derived types for UI
-export interface ProjectWithClient extends Project {
-  client: Client;
-}
-
-export interface TimeEntryWithProject extends TimeEntry {
-  project: ProjectWithClient;
+export interface TimeEntryWithDetails extends TimeEntry {
+  project: Project;
+  phase: Phase;
+  activityType: ActivityType;
 }
 
 export interface WeekSummary {
   weekStartDate: string;
   totalMinutes: number;
   billableMinutes: number;
-  maybeBillableMinutes: number;
   notBillableMinutes: number;
-  entriesByDay: Record<string, TimeEntryWithProject[]>;
+  entriesByDay: Record<string, TimeEntryWithDetails[]>;
   status: WeekStatus | null;
 }
 
@@ -72,23 +86,22 @@ export interface DailyTotal {
   date: string;
   dayName: string;
   totalMinutes: number;
-  entries: TimeEntryWithProject[];
+  entries: TimeEntryWithDetails[];
 }
 
 // Constants
 export const WEEKLY_EXPECTED_HOURS = 40;
-export const MINUTES_PER_INCREMENT = 15;
 export const HOURS_PER_DAY_TARGET = 8;
 
-// Helper to validate duration
-export function isValidDuration(minutes: number): boolean {
-  return minutes > 0 && minutes % MINUTES_PER_INCREMENT === 0;
+// Helper: convert hours + minutes to total minutes
+export function toTotalMinutes(hours: number, minutes: number): number {
+  return hours * 60 + minutes;
 }
 
 // Format duration for display
-export function formatDuration(minutes: number): string {
-  const hours = Math.floor(minutes / 60);
-  const mins = minutes % 60;
+export function formatDuration(totalMinutes: number): string {
+  const hours = Math.floor(totalMinutes / 60);
+  const mins = totalMinutes % 60;
   if (hours === 0) return `${mins}m`;
   if (mins === 0) return `${hours}h`;
   return `${hours}h ${mins}m`;
@@ -104,9 +117,37 @@ export function getBillableLabel(status: BillableStatus): string {
   switch (status) {
     case 'billable':
       return 'Billable';
-    case 'maybe_billable':
-      return 'Maybe billable';
     case 'not_billable':
-      return 'Not billable';
+      return 'Non-billable';
   }
 }
+
+// Get deliverable type label
+export function getDeliverableLabel(type: DeliverableType): string {
+  switch (type) {
+    case 'workshop':
+      return 'Workshop';
+    case 'reporting':
+      return 'Reporting';
+    case 'training':
+      return 'Training';
+    case 'event':
+      return 'Event';
+    case 'case_study':
+      return 'Case study';
+    case 'other':
+      return 'Other';
+  }
+}
+
+export const DELIVERABLE_TYPES: DeliverableType[] = [
+  'workshop',
+  'reporting',
+  'training',
+  'event',
+  'case_study',
+  'other',
+];
+
+export const HOUR_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;

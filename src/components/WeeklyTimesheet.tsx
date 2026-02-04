@@ -24,7 +24,8 @@ import {
   getBillableLabel, 
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
-  BillableStatus 
+  BillableStatus,
+  toTotalMinutes,
 } from '@/types';
 import { cn } from '@/lib/utils';
 
@@ -69,8 +70,6 @@ export function WeeklyTimesheet() {
     switch (status) {
       case 'billable':
         return 'bg-billable/10 text-billable border-billable/20';
-      case 'maybe_billable':
-        return 'bg-maybe-billable/10 text-maybe-billable border-maybe-billable/20';
       case 'not_billable':
         return 'bg-muted text-muted-foreground border-border';
     }
@@ -189,12 +188,6 @@ export function WeeklyTimesheet() {
               </span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-maybe-billable" />
-              <span className="text-sm text-muted-foreground">
-                Maybe: {formatHours(weekSummary.maybeBillableMinutes)}h
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-not-billable" />
               <span className="text-sm text-muted-foreground">
                 Non-billable: {formatHours(weekSummary.notBillableMinutes)}h
@@ -230,60 +223,63 @@ export function WeeklyTimesheet() {
             </div>
           ) : (
             <div className="space-y-3">
-              {selectedDayData.entries.map(entry => (
-                <div 
-                  key={entry.id}
-                  className="flex items-start justify-between p-4 rounded-lg border bg-card shadow-card"
-                >
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="font-mono text-xs text-muted-foreground">
-                        {entry.project.code}
-                      </span>
-                      <span className="font-medium truncate">{entry.project.name}</span>
+              {selectedDayData.entries.map(entry => {
+                const entryMinutes = toTotalMinutes(entry.hours, entry.minutes);
+                return (
+                  <div 
+                    key={entry.id}
+                    className="flex items-start justify-between p-4 rounded-lg border bg-card shadow-card"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="font-mono text-xs text-muted-foreground">
+                          {entry.project.code}
+                        </span>
+                        <span className="font-medium truncate">{entry.project.name}</span>
+                      </div>
+                      <p className="text-sm text-muted-foreground mb-1">
+                        {entry.phase.name} → {entry.activityType.name}
+                      </p>
+                      <p className="text-sm line-clamp-2">
+                        {entry.taskDescription}
+                      </p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <Badge variant="outline" className={getBillableColor(entry.billableStatus)}>
+                          {getBillableLabel(entry.billableStatus)}
+                        </Badge>
+                      </div>
                     </div>
-                    <p className="text-sm text-muted-foreground line-clamp-2">
-                      {entry.description || 'No description'}
-                    </p>
-                    <div className="flex items-center gap-2 mt-2">
-                      <Badge variant="outline" className={getBillableColor(entry.billableStatus)}>
-                        {getBillableLabel(entry.billableStatus)}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {entry.project.client.name}
+                    <div className="flex items-center gap-3 ml-4">
+                      <span className="text-lg font-semibold tabular-nums">
+                        {formatDuration(entryMinutes)}
                       </span>
+                      {!submitted && (
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Delete time entry?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This will permanently remove this {formatDuration(entryMinutes)} entry for {entry.project.name}.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteEntry(entry.id)}>
+                                Delete
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-3 ml-4">
-                    <span className="text-lg font-semibold tabular-nums">
-                      {formatDuration(entry.durationMinutes)}
-                    </span>
-                    {!submitted && (
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Delete time entry?</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              This will permanently remove this {formatDuration(entry.durationMinutes)} entry for {entry.project.name}.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => deleteEntry(entry.id)}>
-                              Delete
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
-                    )}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </CardContent>
