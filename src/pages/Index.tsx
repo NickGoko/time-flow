@@ -25,11 +25,11 @@ const Index = () => {
           <ExportButton />
         </div>
 
-        {/* Dashboard Stats */}
-        <PersonalDashboard />
-
-        {/* Weekly Timesheet */}
+        {/* Weekly Timesheet - Primary action area */}
         <WeeklyTimesheet />
+
+        {/* Dashboard Stats - Secondary */}
+        <PersonalDashboard />
       </main>
     </div>
   );

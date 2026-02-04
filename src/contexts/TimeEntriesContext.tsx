@@ -23,6 +23,7 @@ interface TimeEntriesContextType {
   getEntriesForWeek: (userId: string, weekStart: string) => TimeEntryWithDetails[];
   getWeekSummary: (userId: string, weekStart: string) => WeekSummary;
   getDailyTotals: (userId: string, weekStart: string) => DailyTotal[];
+  getDailyTotalMinutes: (userId: string, date: string) => number;
   submitWeek: (userId: string, weekStart: string) => void;
   isWeekSubmitted: (userId: string, weekStart: string) => boolean;
 }
@@ -131,6 +132,15 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     [getEntriesForWeek]
   );
 
+  const getDailyTotalMinutes = useCallback(
+    (userId: string, date: string): number => {
+      return entries
+        .filter(entry => entry.userId === userId && entry.date === date)
+        .reduce((sum, entry) => sum + toTotalMinutes(entry.hours, entry.minutes), 0);
+    },
+    [entries]
+  );
+
   const submitWeek = useCallback((userId: string, weekStart: string) => {
     const existingIndex = weekStatuses.findIndex(
       ws => ws.userId === userId && ws.weekStartDate === weekStart
@@ -179,6 +189,7 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         getEntriesForWeek,
         getWeekSummary,
         getDailyTotals,
+        getDailyTotalMinutes,
         submitWeek,
         isWeekSubmitted,
       }}

@@ -92,6 +92,8 @@ export interface DailyTotal {
 // Constants
 export const WEEKLY_EXPECTED_HOURS = 40;
 export const HOURS_PER_DAY_TARGET = 8;
+export const MAX_DAILY_HOURS = 10;
+export const MAX_DAILY_MINUTES = MAX_DAILY_HOURS * 60;
 
 // Helper: convert hours + minutes to total minutes
 export function toTotalMinutes(hours: number, minutes: number): number {
@@ -149,5 +151,5 @@ export const DELIVERABLE_TYPES: DeliverableType[] = [
   'other',
 ];
 
-export const HOUR_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8] as const;
+export const HOUR_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Send, Lock, Trash2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Send, Lock, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -24,6 +24,7 @@ import {
   getBillableLabel, 
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
+  MAX_DAILY_HOURS,
   BillableStatus,
   toTotalMinutes,
 } from '@/types';
@@ -96,10 +97,12 @@ export function WeeklyTimesheet() {
             
             <div className="flex items-center gap-3">
               {submitted ? (
-                <Badge variant="secondary" className="gap-1.5">
-                  <Lock className="h-3 w-3" />
-                  Submitted
-                </Badge>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="gap-1.5 bg-muted">
+                    <Lock className="h-3 w-3" />
+                    Week locked
+                  </Badge>
+                </div>
               ) : (
                 <Button 
                   variant="outline" 
@@ -138,9 +141,11 @@ export function WeeklyTimesheet() {
           <div className="grid grid-cols-7 gap-2">
             {dailyTotals.map((day, i) => {
               const dayTarget = HOURS_PER_DAY_TARGET * 60;
+              const dayMax = MAX_DAILY_HOURS * 60;
               const isWeekend = i >= 5;
               const hasEntries = day.totalMinutes > 0;
               const isMet = day.totalMinutes >= dayTarget;
+              const isAtMax = day.totalMinutes >= dayMax;
               
               return (
                 <button
@@ -170,10 +175,14 @@ export function WeeklyTimesheet() {
                     "mt-2 text-lg font-semibold tabular-nums",
                     !hasEntries && "text-muted-foreground/50",
                     hasEntries && isMet && !isWeekend && "text-success",
-                    hasEntries && !isMet && !isWeekend && "text-foreground"
+                    hasEntries && !isMet && !isWeekend && "text-foreground",
+                    isAtMax && "text-warning"
                   )}>
                     {formatHours(day.totalMinutes)}h
                   </div>
+                  {isAtMax && (
+                    <span className="text-[10px] text-warning mt-0.5">Max</span>
+                  )}
                 </button>
               );
             })}
@@ -208,7 +217,12 @@ export function WeeklyTimesheet() {
                 month: 'long',
               })}
             </CardTitle>
-            {!submitted && (
+            {submitted ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Lock className="h-4 w-4" />
+                <span>This week is locked and cannot be edited</span>
+              </div>
+            ) : (
               <TimeEntryForm selectedDate={selectedDate} />
             )}
           </div>
