@@ -34,6 +34,10 @@ import {
   DELIVERABLE_TYPES,
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
+  MAX_DAILY_MINUTES,
+  MAX_DAILY_HOURS,
+  toTotalMinutes,
+  formatHours,
 } from '@/types';
 import { projects, phases, getActivitiesForPhase } from '@/data/seed';
 import { useCurrentUser } from '@/contexts/UserContext';
@@ -48,8 +52,9 @@ interface TimeEntryFormProps {
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useCurrentUser();
-  const { addEntry } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes } = useTimeEntries();
   const [open, setOpen] = useState(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
   
   // Form state
   const [date, setDate] = useState<Date>(new Date(selectedDate));
@@ -97,7 +102,15 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     setMinutes(0);
     setBillableStatus('billable');
     setComments('');
+    setValidationError(null);
   };
+
+  // Check if adding this entry would exceed daily cap
+  const entryMinutes = toTotalMinutes(hours, minutes);
+  const currentDailyTotal = getDailyTotalMinutes(currentUser.id, format(date, 'yyyy-MM-dd'));
+  const projectedTotal = currentDailyTotal + entryMinutes;
+  const wouldExceedCap = projectedTotal > MAX_DAILY_MINUTES;
+  const remainingMinutes = MAX_DAILY_MINUTES - currentDailyTotal;
 
   const isFormValid = 
     projectId && 
@@ -105,10 +118,18 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     activityTypeId && 
     taskDescription.trim() && 
     deliverableType && 
-    (hours > 0 || minutes > 0);
+    (hours > 0 || minutes > 0) &&
+    !wouldExceedCap;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (wouldExceedCap) {
+      setValidationError(`Daily total can't exceed ${MAX_DAILY_HOURS} hours. You have ${formatHours(remainingMinutes)}h remaining.`);
+      return;
+    }
+    
+    setValidationError(null);
     
     if (!isFormValid) return;
 
@@ -283,43 +304,63 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
             </div>
 
             {/* Hours and Minutes */}
-            <div className="grid grid-cols-2 gap-4">
-              <div className="grid gap-2">
-                <Label htmlFor="hours">Hours *</Label>
-                <Select 
-                  value={hours.toString()} 
-                  onValueChange={(v) => setHours(parseInt(v, 10))}
-                >
-                  <SelectTrigger id="hours">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {HOUR_OPTIONS.map(h => (
-                      <SelectItem key={h} value={h.toString()}>
-                        {h} {h === 1 ? 'hour' : 'hours'}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <div className="grid gap-2">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="hours">Hours *</Label>
+                  <Select 
+                    value={hours.toString()} 
+                    onValueChange={(v) => {
+                      setHours(parseInt(v, 10));
+                      setValidationError(null);
+                    }}
+                  >
+                    <SelectTrigger id="hours">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HOUR_OPTIONS.map(h => (
+                        <SelectItem key={h} value={h.toString()}>
+                          {h} {h === 1 ? 'hour' : 'hours'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="minutes">Minutes *</Label>
+                  <Select 
+                    value={minutes.toString()} 
+                    onValueChange={(v) => {
+                      setMinutes(parseInt(v, 10));
+                      setValidationError(null);
+                    }}
+                  >
+                    <SelectTrigger id="minutes">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MINUTE_OPTIONS.map(m => (
+                        <SelectItem key={m} value={m.toString()}>
+                          {m} min
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="minutes">Minutes *</Label>
-                <Select 
-                  value={minutes.toString()} 
-                  onValueChange={(v) => setMinutes(parseInt(v, 10))}
-                >
-                  <SelectTrigger id="minutes">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {MINUTE_OPTIONS.map(m => (
-                      <SelectItem key={m} value={m.toString()}>
-                        {m} min
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+              
+              {/* Daily total info */}
+              <p className="text-xs text-muted-foreground">
+                Already logged today: {formatHours(currentDailyTotal)}h of {MAX_DAILY_HOURS}h maximum
+              </p>
+              
+              {/* Validation error */}
+              {(wouldExceedCap || validationError) && (
+                <p className="text-sm text-destructive font-medium">
+                  {validationError || `Daily total can't exceed ${MAX_DAILY_HOURS} hours.`}
+                </p>
+              )}
             </div>
 
             {/* Billable Status */}
