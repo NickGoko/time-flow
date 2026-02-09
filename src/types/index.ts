@@ -1,6 +1,6 @@
 // Core types for Time Registration App
 
-export type BillableStatus = 'billable' | 'not_billable';
+export type BillableStatus = 'billable' | 'maybe_billable' | 'not_billable';
 
 export interface User {
   id: string;
@@ -119,10 +119,14 @@ export function getBillableLabel(status: BillableStatus): string {
   switch (status) {
     case 'billable':
       return 'Billable';
+    case 'maybe_billable':
+      return 'Maybe Billable';
     case 'not_billable':
-      return 'Non-billable';
+      return 'Not Billable';
   }
 }
+
+export const BILLABLE_STATUSES: BillableStatus[] = ['billable', 'maybe_billable', 'not_billable'];
 
 // Get deliverable type label
 export function getDeliverableLabel(type: DeliverableType): string {

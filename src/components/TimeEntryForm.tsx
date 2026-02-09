@@ -32,6 +32,7 @@ import {
   getBillableLabel,
   getDeliverableLabel,
   DELIVERABLE_TYPES,
+  BILLABLE_STATUSES,
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
   MAX_DAILY_MINUTES,
@@ -367,7 +368,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
             <div className="grid gap-2">
               <Label>Billable status *</Label>
               <div className="flex gap-2">
-                {(['billable', 'not_billable'] as BillableStatus[]).map(status => (
+                {BILLABLE_STATUSES.map(status => (
                   <Button
                     key={status}
                     type="button"
@@ -377,6 +378,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                     className={cn(
                       'flex-1',
                       billableStatus === status && status === 'billable' && 'bg-billable hover:bg-billable/90',
+                      billableStatus === status && status === 'maybe_billable' && 'bg-warning hover:bg-warning/90',
                       billableStatus === status && status === 'not_billable' && 'bg-not-billable hover:bg-not-billable/90'
                     )}
                   >
