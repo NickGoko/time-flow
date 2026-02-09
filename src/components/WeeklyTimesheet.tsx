@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, Send, Lock, Trash2, AlertCircle } from 'luci
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -17,6 +18,7 @@ import {
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { TimeEntryForm } from './TimeEntryForm';
+import { DailyGridEntry } from './DailyGridEntry';
 import { getWeekStart, getWeekDate } from '@/data/seed';
 import { 
   formatDuration, 
@@ -38,6 +40,7 @@ export function WeeklyTimesheet() {
   
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [selectedDay, setSelectedDay] = useState(0);
+  const [entryMode, setEntryMode] = useState<'single' | 'grid'>('single');
 
   const dailyTotals = getDailyTotals(currentUser.id, weekStart);
   const weekSummary = getWeekSummary(currentUser.id, weekStart);
@@ -71,6 +74,8 @@ export function WeeklyTimesheet() {
     switch (status) {
       case 'billable':
         return 'bg-billable/10 text-billable border-billable/20';
+      case 'maybe_billable':
+        return 'bg-warning/10 text-warning border-warning/20';
       case 'not_billable':
         return 'bg-muted text-muted-foreground border-border';
     }
@@ -217,26 +222,47 @@ export function WeeklyTimesheet() {
                 month: 'long',
               })}
             </CardTitle>
-            {submitted ? (
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Lock className="h-4 w-4" />
-                <span>This week is locked and cannot be edited</span>
-              </div>
-            ) : (
-              <TimeEntryForm selectedDate={selectedDate} />
-            )}
+            <div className="flex items-center gap-3">
+              {!submitted && (
+                <Tabs value={entryMode} onValueChange={(v) => setEntryMode(v as 'single' | 'grid')}>
+                  <TabsList className="h-8">
+                    <TabsTrigger value="single" className="text-xs px-3 h-7">Single entry</TabsTrigger>
+                    <TabsTrigger value="grid" className="text-xs px-3 h-7">Grid view</TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              )}
+              {submitted ? (
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Lock className="h-4 w-4" />
+                  <span>This week is locked</span>
+                </div>
+              ) : entryMode === 'single' ? (
+                <TimeEntryForm selectedDate={selectedDate} />
+              ) : null}
+            </div>
           </div>
         </CardHeader>
         <CardContent>
-          {selectedDayData.entries.length === 0 ? (
+          {/* Grid view */}
+          {entryMode === 'grid' && !submitted && (
+            <div className="mb-6">
+              <DailyGridEntry selectedDate={selectedDate} disabled={submitted} />
+            </div>
+          )}
+
+          {/* Existing entries list */}
+          {selectedDayData.entries.length === 0 && entryMode !== 'grid' ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>No time entries for this day</p>
               {!submitted && (
                 <p className="text-sm mt-1">Click "Log time" to add an entry</p>
               )}
             </div>
-          ) : (
+          ) : selectedDayData.entries.length > 0 ? (
             <div className="space-y-3">
+              {entryMode === 'grid' && selectedDayData.entries.length > 0 && (
+                <h4 className="text-sm font-medium text-muted-foreground pt-2">Existing entries</h4>
+              )}
               {selectedDayData.entries.map(entry => {
                 const entryMinutes = toTotalMinutes(entry.hours, entry.minutes);
                 return (
@@ -295,7 +321,7 @@ export function WeeklyTimesheet() {
                 );
               })}
             </div>
-          )}
+          ) : null}
         </CardContent>
       </Card>
     </div>
