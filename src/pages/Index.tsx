@@ -1,7 +1,7 @@
 import { TopBar } from '@/components/TopBar';
 import { PersonalDashboard } from '@/components/PersonalDashboard';
 import { WeeklyTimesheet } from '@/components/WeeklyTimesheet';
-import { ExportButton } from '@/components/ExportButton';
+
 import { useCurrentUser } from '@/contexts/UserContext';
 
 const Index = () => {
@@ -22,7 +22,7 @@ const Index = () => {
               Track your time and stay on top of your weekly targets
             </p>
           </div>
-          <ExportButton />
+          
         </div>
 
         {/* Weekly Timesheet - Primary action area */}
