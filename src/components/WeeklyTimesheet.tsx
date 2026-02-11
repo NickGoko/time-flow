@@ -99,13 +99,13 @@ export function WeeklyTimesheet() {
       {/* Week Navigation & Summary */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" onClick={() => navigateWeek(-1)}>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(-1)}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
-              <CardTitle className="text-lg font-semibold">{formatWeekRange()}</CardTitle>
-              <Button variant="outline" size="icon" onClick={() => navigateWeek(1)}>
+              <CardTitle className="text-base sm:text-lg font-semibold">{formatWeekRange()}</CardTitle>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(1)}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
@@ -121,7 +121,7 @@ export function WeeklyTimesheet() {
               ) : (
                 <Button 
                   variant="outline" 
-                  className="gap-2"
+                  className="gap-2 w-full sm:w-auto"
                   onClick={() => submitWeek(currentUser.id, weekStart)}
                   disabled={weekSummary.totalMinutes === 0}
                 >
@@ -153,7 +153,7 @@ export function WeeklyTimesheet() {
           </div>
 
           {/* Day columns */}
-          <div className="grid grid-cols-7 gap-2">
+          <div className="grid grid-cols-7 gap-1 sm:gap-2">
             {dailyTotals.map((day, i) => {
               const dayTarget = HOURS_PER_DAY_TARGET * 60;
               const dayMax = MAX_DAILY_HOURS * 60;
@@ -167,7 +167,7 @@ export function WeeklyTimesheet() {
                   key={day.date}
                   onClick={() => setSelectedDay(i)}
                   className={cn(
-                    "flex flex-col items-center p-3 rounded-lg border transition-all",
+                    "flex flex-col items-center p-2 sm:p-3 rounded-lg border transition-all min-h-[68px]",
                     selectedDay === i 
                       ? "border-primary bg-primary/5 ring-1 ring-primary/20" 
                       : "border-transparent hover:border-border hover:bg-muted/50",
@@ -187,7 +187,7 @@ export function WeeklyTimesheet() {
                     {parseLocalDate(day.date).getDate()}
                   </span>
                   <div className={cn(
-                    "mt-2 text-lg font-semibold tabular-nums",
+                    "mt-1 sm:mt-2 text-base sm:text-lg font-semibold tabular-nums",
                     !hasEntries && "text-muted-foreground/50",
                     hasEntries && isMet && !isWeekend && "text-success",
                     hasEntries && !isMet && !isWeekend && "text-foreground",
@@ -204,7 +204,7 @@ export function WeeklyTimesheet() {
           </div>
 
           {/* Billable summary */}
-          <div className="flex gap-4 mt-4 pt-4 border-t">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 pt-4 border-t">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-billable" />
               <span className="text-sm text-muted-foreground">
@@ -224,28 +224,30 @@ export function WeeklyTimesheet() {
       {/* Selected Day Detail */}
       <Card>
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <CardTitle className="text-base font-medium">
-                {parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                })}
-              </CardTitle>
-              <span className="text-sm text-muted-foreground tabular-nums">
-                {formatHours(selectedDayData.totalMinutes)}h / {dayProgressPercent}%
-              </span>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+                <CardTitle className="text-sm sm:text-base font-medium">
+                  {parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
+                    weekday: 'long',
+                    day: 'numeric',
+                    month: 'long',
+                  })}
+                </CardTitle>
+                <span className="text-xs sm:text-sm text-muted-foreground tabular-nums">
+                  {formatHours(selectedDayData.totalMinutes)}h / {dayProgressPercent}%
+                </span>
+              </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               {!submitted && (
                 <Tabs value={entryMode} onValueChange={(v) => setEntryMode(v as 'single' | 'grid')}>
-                  <TabsList className="h-8">
+                  <TabsList className="h-8 w-full sm:w-auto">
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <TabsTrigger
                           value="single"
-                          className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                          className="text-xs px-3 h-7 flex-1 sm:flex-initial data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                         >
                           Single entry
                         </TabsTrigger>
@@ -256,7 +258,7 @@ export function WeeklyTimesheet() {
                       <TooltipTrigger asChild>
                         <TabsTrigger
                           value="grid"
-                          className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                          className="text-xs px-3 h-7 flex-1 sm:flex-initial data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
                         >
                           Multiple entries
                         </TabsTrigger>
@@ -310,7 +312,7 @@ export function WeeklyTimesheet() {
                 return (
                   <div 
                     key={entry.id}
-                    className="flex items-start justify-between p-4 rounded-lg border bg-card shadow-card"
+                    className="flex flex-col sm:flex-row items-start justify-between p-3 sm:p-4 rounded-lg border bg-card shadow-card gap-3"
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
@@ -336,7 +338,7 @@ export function WeeklyTimesheet() {
                         </Badge>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 ml-4">
+                    <div className="flex items-center gap-3 sm:ml-4 self-end sm:self-auto shrink-0">
                       <span className="text-lg font-semibold tabular-nums">
                         {formatDuration(entryMinutes)}
                       </span>
