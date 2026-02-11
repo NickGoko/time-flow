@@ -181,18 +181,18 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
   return (
     <div className="space-y-4">
       {/* Sticky date header */}
-      <div className="sticky top-0 z-10 bg-card py-2 border-b flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="text-sm font-medium">{formattedDate}</Badge>
+      <div className="sticky top-0 z-10 bg-card py-2 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-xs sm:text-sm font-medium">{formattedDate}</Badge>
           <span className="text-xs text-muted-foreground">
             Logged: {formatHours(existingMinutes)}h / {MAX_DAILY_HOURS}h
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
+          <Button variant="outline" size="sm" onClick={addRow} className="gap-1 flex-1 sm:flex-initial">
             <Plus className="h-3.5 w-3.5" /> Add entry
           </Button>
-          <Button size="sm" onClick={validateAndSave} className="gap-1">
+          <Button size="sm" onClick={validateAndSave} className="gap-1 flex-1 sm:flex-initial">
             <Save className="h-3.5 w-3.5" /> Save all
           </Button>
         </div>
