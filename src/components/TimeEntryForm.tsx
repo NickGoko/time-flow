@@ -162,7 +162,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
       <DialogTrigger asChild>
         <Button className="gap-2">
           <Plus className="h-4 w-4" />
-          Log time
+          Add entry
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
