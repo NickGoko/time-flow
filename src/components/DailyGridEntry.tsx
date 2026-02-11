@@ -186,7 +186,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
-            <Plus className="h-3.5 w-3.5" /> Add row
+            <Plus className="h-3.5 w-3.5" /> Add activity
           </Button>
           <Button size="sm" onClick={validateAndSave} className="gap-1">
             <Save className="h-3.5 w-3.5" /> Save all
