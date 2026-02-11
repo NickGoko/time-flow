@@ -29,6 +29,9 @@ import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
 
+const LEAVE_PROJECT_ID = 'proj-leave';
+const ABSENCE_PHASE_ID = 'phase-absence';
+
 interface GridRow {
   id: string;
   projectId: string;
@@ -86,10 +89,25 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       if (field === 'phaseId') {
         updated.activityTypeId = '';
       }
-      // Set default billable from project
+      // Set default billable from project + leave auto-fill
       if (field === 'projectId') {
         const project = projects.find(p => p.id === value);
         if (project) updated.billableStatus = project.defaultBillableStatus;
+        if (value === LEAVE_PROJECT_ID) {
+          updated.phaseId = ABSENCE_PHASE_ID;
+          updated.activityTypeId = '';
+          updated.hours = 8;
+          updated.minutes = 0;
+          updated.billableStatus = 'not_billable';
+          updated.deliverableType = 'other';
+        } else if (row.projectId === LEAVE_PROJECT_ID) {
+          // Reset when switching away from leave
+          updated.phaseId = '';
+          updated.activityTypeId = '';
+          updated.hours = 0;
+          updated.minutes = 0;
+          updated.deliverableType = '';
+        }
       }
       return updated;
     }));
@@ -232,6 +250,8 @@ interface GridRowEntryProps {
 }
 
 function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntryProps) {
+  const isLeave = row.projectId === LEAVE_PROJECT_ID;
+
   const activities = useMemo(() => {
     if (!row.phaseId) return [];
     return getActivitiesForPhase(row.phaseId);
@@ -268,12 +288,12 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
 
         {/* Phase */}
         <div>
-          <Select value={row.phaseId} onValueChange={v => onUpdate(row.id, 'phaseId', v)}>
+          <Select value={row.phaseId} onValueChange={v => onUpdate(row.id, 'phaseId', v)} disabled={isLeave}>
             <SelectTrigger className={row.errors.phaseId ? 'border-destructive' : ''}>
               <SelectValue placeholder="Phase *" />
             </SelectTrigger>
             <SelectContent>
-              {phases.map(p => (
+              {(isLeave ? phases.filter(p => p.id === ABSENCE_PHASE_ID) : phases).map(p => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
             </SelectContent>
@@ -309,7 +329,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
 
         {/* Deliverable Type */}
         <div>
-          <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)}>
+          <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
             <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
               <SelectValue placeholder="Deliverable *" />
             </SelectTrigger>
@@ -333,7 +353,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
 
         {/* Hours */}
         <div>
-          <Select value={row.hours.toString()} onValueChange={v => onUpdate(row.id, 'hours', parseInt(v, 10))}>
+          <Select value={row.hours.toString()} onValueChange={v => onUpdate(row.id, 'hours', parseInt(v, 10))} disabled={isLeave}>
             <SelectTrigger className={row.errors.duration ? 'border-destructive' : ''}>
               <SelectValue />
             </SelectTrigger>
@@ -347,7 +367,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
 
         {/* Minutes */}
         <div>
-          <Select value={row.minutes.toString()} onValueChange={v => onUpdate(row.id, 'minutes', parseInt(v, 10))}>
+          <Select value={row.minutes.toString()} onValueChange={v => onUpdate(row.id, 'minutes', parseInt(v, 10))} disabled={isLeave}>
             <SelectTrigger className={row.errors.duration ? 'border-destructive' : ''}>
               <SelectValue />
             </SelectTrigger>
@@ -362,7 +382,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
 
         {/* Billable */}
         <div>
-          <Select value={row.billableStatus} onValueChange={v => onUpdate(row.id, 'billableStatus', v)}>
+          <Select value={row.billableStatus} onValueChange={v => onUpdate(row.id, 'billableStatus', v)} disabled={isLeave}>
             <SelectTrigger>
               <SelectValue />
             </SelectTrigger>
@@ -372,6 +392,9 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
               ))}
             </SelectContent>
           </Select>
+          {isLeave && (
+            <p className="text-xs text-muted-foreground mt-1">Leave is always non-billable</p>
+          )}
         </div>
       </div>
     </div>
