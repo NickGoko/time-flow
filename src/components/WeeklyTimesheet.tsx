@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Tooltip, TooltipTrigger, TooltipContent } from '@/components/ui/tooltip';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -226,8 +227,18 @@ export function WeeklyTimesheet() {
               {!submitted && (
                 <Tabs value={entryMode} onValueChange={(v) => setEntryMode(v as 'single' | 'grid')}>
                   <TabsList className="h-8">
-                    <TabsTrigger value="single" className="text-xs px-3 h-7">Single entry</TabsTrigger>
-                    <TabsTrigger value="grid" className="text-xs px-3 h-7">Grid view</TabsTrigger>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger value="single" className="text-xs px-3 h-7">Single entry</TabsTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Log a single time entry via a form</TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <TabsTrigger value="grid" className="text-xs px-3 h-7">Grid view</TabsTrigger>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">Log multiple entries at once in a table</TooltipContent>
+                    </Tooltip>
                   </TabsList>
                 </Tabs>
               )}
@@ -255,7 +266,7 @@ export function WeeklyTimesheet() {
             <div className="text-center py-8 text-muted-foreground">
               <p>No time entries for this day</p>
               {!submitted && (
-                <p className="text-sm mt-1">Click "Log time" to add an entry</p>
+                <p className="text-sm mt-1">Click "Log time" to add an activity</p>
               )}
             </div>
           ) : selectedDayData.entries.length > 0 ? (
