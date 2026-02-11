@@ -6,118 +6,130 @@
 
 @layer base {
   :root {
+    /* GrowthAfrica Design System */
+
     /* Core surfaces */
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
-    
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    
+    --background: 0 0% 95%;       /* #F3F3F3 */
+    --foreground: 0 0% 0%;        /* #000000 */
+
+    --card: 0 0% 100%;            /* #FFFFFF */
+    --card-foreground: 0 0% 0%;
+
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    
-    /* Brand - Professional blue */
-    --primary: 217 91% 50%;
+    --popover-foreground: 0 0% 0%;
+
+    /* Accent — used sparingly: primary buttons + active states */
+    --primary: 24 100% 55%;       /* #FF6F16 */
     --primary-foreground: 0 0% 100%;
-    
-    /* Secondary - Subtle slate */
-    --secondary: 215 20% 95%;
-    --secondary-foreground: 222 47% 11%;
-    
+
+    /* Secondary — elevated surface */
+    --secondary: 0 0% 92%;        /* #EBEBEB */
+    --secondary-foreground: 0 0% 0%;
+
     /* Muted */
-    --muted: 215 20% 95%;
-    --muted-foreground: 215 16% 47%;
-    
-    /* Accent */
-    --accent: 215 20% 95%;
-    --accent-foreground: 222 47% 11%;
-    
+    --muted: 0 0% 92%;            /* #EBEBEB */
+    --muted-foreground: 0 0% 46%; /* #767676 */
+
+    /* Tertiary text */
+    --tertiary-foreground: 0 0% 62%; /* #9E9E9E */
+
+    /* Accent (non-primary interactive hover) */
+    --accent: 0 0% 92%;
+    --accent-foreground: 0 0% 0%;
+
     /* Destructive */
-    --destructive: 0 84% 60%;
+    --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
-    
+
+    /* Highlight — very limited use */
+    --highlight: 56 90% 85%;      /* #FAF5B2 */
+
     /* Borders & inputs */
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 50%;
-    
-    /* Radius - consistent 12px */
-    --radius: 0.75rem;
-    
-    /* Billable status colors */
+    --border: 0 0% 85%;
+    --input: 0 0% 85%;
+    --ring: 24 100% 55%;
+
+    /* Radius — 8px, no playful rounding */
+    --radius: 0.5rem;
+
+    /* Billable status (functional) */
     --billable: 142 71% 45%;
     --billable-foreground: 0 0% 100%;
     --maybe-billable: 38 92% 50%;
     --maybe-billable-foreground: 0 0% 100%;
-    --not-billable: 215 16% 47%;
+    --not-billable: 0 0% 46%;
     --not-billable-foreground: 0 0% 100%;
-    
-    /* Status */
+
+    /* Status (functional) */
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    
+
     /* Sidebar */
     --sidebar-background: 0 0% 100%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 217 91% 50%;
+    --sidebar-foreground: 0 0% 0%;
+    --sidebar-primary: 24 100% 55%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 20% 95%;
-    --sidebar-accent-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 217 91% 50%;
+    --sidebar-accent: 0 0% 92%;
+    --sidebar-accent-foreground: 0 0% 0%;
+    --sidebar-border: 0 0% 85%;
+    --sidebar-ring: 24 100% 55%;
   }
 
   .dark {
-    --background: 222 47% 6%;
-    --foreground: 210 40% 98%;
-    
-    --card: 222 47% 8%;
-    --card-foreground: 210 40% 98%;
-    
-    --popover: 222 47% 8%;
-    --popover-foreground: 210 40% 98%;
-    
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 6%;
-    
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 212 27% 84%;
-    
+    --background: 0 0% 18%;        /* #2E2E2E */
+    --foreground: 0 0% 95%;
+
+    --card: 0 0% 22%;
+    --card-foreground: 0 0% 95%;
+
+    --popover: 0 0% 22%;
+    --popover-foreground: 0 0% 95%;
+
+    --primary: 24 100% 55%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 0 0% 28%;
+    --secondary-foreground: 0 0% 95%;
+
+    --muted: 0 0% 28%;
+    --muted-foreground: 0 0% 62%;
+
+    --tertiary-foreground: 0 0% 50%;
+
+    --accent: 0 0% 28%;
+    --accent-foreground: 0 0% 95%;
+
+    --destructive: 0 63% 40%;
+    --destructive-foreground: 0 0% 95%;
+
+    --highlight: 56 70% 40%;
+
+    --border: 0 0% 30%;
+    --input: 0 0% 30%;
+    --ring: 24 100% 55%;
+
     --billable: 142 71% 45%;
     --billable-foreground: 0 0% 100%;
     --maybe-billable: 38 92% 50%;
     --maybe-billable-foreground: 0 0% 100%;
-    --not-billable: 215 20% 65%;
+    --not-billable: 0 0% 55%;
     --not-billable-foreground: 0 0% 100%;
-    
+
     --success: 142 71% 45%;
     --success-foreground: 0 0% 100%;
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
-    
-    --sidebar-background: 222 47% 6%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
-    --sidebar-primary-foreground: 222 47% 6%;
-    --sidebar-accent: 217 33% 17%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 217 91% 60%;
+
+    --sidebar-background: 0 0% 18%;
+    --sidebar-foreground: 0 0% 95%;
+    --sidebar-primary: 24 100% 55%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 0 0% 28%;
+    --sidebar-accent-foreground: 0 0% 95%;
+    --sidebar-border: 0 0% 30%;
+    --sidebar-ring: 24 100% 55%;
   }
 }
 
