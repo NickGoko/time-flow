@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ChevronLeft, ChevronRight, Send, Lock, Trash2, AlertCircle } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Send, Lock, Trash2, AlertCircle } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -25,6 +25,7 @@ import {
   formatDuration, 
   formatHours, 
   getBillableLabel, 
+  getDeliverableLabel,
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
   MAX_DAILY_HOURS,
@@ -42,6 +43,12 @@ export function WeeklyTimesheet() {
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [selectedDay, setSelectedDay] = useState(0);
   const [entryMode, setEntryMode] = useState<'single' | 'grid'>('single');
+  const [entriesExpanded, setEntriesExpanded] = useState(true);
+
+  // Reset expand state when day changes
+  useEffect(() => {
+    setEntriesExpanded(true);
+  }, [selectedDay]);
 
   const dailyTotals = getDailyTotals(currentUser.id, weekStart);
   const weekSummary = getWeekSummary(currentUser.id, weekStart);
@@ -84,6 +91,8 @@ export function WeeklyTimesheet() {
 
   const selectedDate = getWeekDate(weekStart, selectedDay);
   const selectedDayData = dailyTotals[selectedDay];
+  const dayTargetMinutes = HOURS_PER_DAY_TARGET * 60;
+  const dayProgressPercent = Math.round((selectedDayData.totalMinutes / dayTargetMinutes) * 100);
 
   return (
     <div className="space-y-6">
@@ -216,26 +225,41 @@ export function WeeklyTimesheet() {
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-base font-medium">
-              {parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
-                weekday: 'long',
-                day: 'numeric',
-                month: 'long',
-              })}
-            </CardTitle>
+            <div className="flex items-center gap-3">
+              <CardTitle className="text-base font-medium">
+                {parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
+                  weekday: 'long',
+                  day: 'numeric',
+                  month: 'long',
+                })}
+              </CardTitle>
+              <span className="text-sm text-muted-foreground tabular-nums">
+                {formatHours(selectedDayData.totalMinutes)}h / {dayProgressPercent}%
+              </span>
+            </div>
             <div className="flex items-center gap-3">
               {!submitted && (
                 <Tabs value={entryMode} onValueChange={(v) => setEntryMode(v as 'single' | 'grid')}>
                   <TabsList className="h-8">
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <TabsTrigger value="single" className="text-xs px-3 h-7">Single entry</TabsTrigger>
+                        <TabsTrigger
+                          value="single"
+                          className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
+                          Single entry
+                        </TabsTrigger>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">Log a single time entry via a form</TooltipContent>
                     </Tooltip>
                     <Tooltip>
                       <TooltipTrigger asChild>
-                        <TabsTrigger value="grid" className="text-xs px-3 h-7">Grid view</TabsTrigger>
+                        <TabsTrigger
+                          value="grid"
+                          className="text-xs px-3 h-7 data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                        >
+                          Multiple entries
+                        </TabsTrigger>
                       </TooltipTrigger>
                       <TooltipContent side="bottom">Log multiple entries at once in a table</TooltipContent>
                     </Tooltip>
@@ -266,15 +290,22 @@ export function WeeklyTimesheet() {
             <div className="text-center py-8 text-muted-foreground">
               <p>No time entries for this day</p>
               {!submitted && (
-                <p className="text-sm mt-1">Click "Log time" to add an activity</p>
+                <p className="text-sm mt-1">Click "Add entry" to log time</p>
               )}
             </div>
           ) : selectedDayData.entries.length > 0 ? (
             <div className="space-y-3">
-              {entryMode === 'grid' && selectedDayData.entries.length > 0 && (
-                <h4 className="text-sm font-medium text-muted-foreground pt-2">Existing entries</h4>
-              )}
-              {selectedDayData.entries.map(entry => {
+              {/* Collapsible header */}
+              <button
+                type="button"
+                onClick={() => setEntriesExpanded(prev => !prev)}
+                className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors w-full"
+              >
+                {entriesExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {entryMode === 'grid' ? 'Existing entries' : 'Entries'} ({selectedDayData.entries.length})
+              </button>
+
+              {entriesExpanded && selectedDayData.entries.map(entry => {
                 const entryMinutes = toTotalMinutes(entry.hours, entry.minutes);
                 return (
                   <div 
@@ -294,6 +325,11 @@ export function WeeklyTimesheet() {
                       <p className="text-sm line-clamp-2">
                         {entry.taskDescription}
                       </p>
+                      {entry.deliverableDescription && (
+                        <p className="text-sm text-muted-foreground mt-1 italic">
+                          {getDeliverableLabel(entry.deliverableType)}: {entry.deliverableDescription}
+                        </p>
+                      )}
                       <div className="flex items-center gap-2 mt-2">
                         <Badge variant="outline" className={getBillableColor(entry.billableStatus)}>
                           {getBillableLabel(entry.billableStatus)}

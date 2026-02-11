@@ -36,6 +36,7 @@ interface GridRow {
   activityTypeId: string;
   taskDescription: string;
   deliverableType: DeliverableType | '';
+  deliverableDescription: string;
   hours: number;
   minutes: number;
   billableStatus: BillableStatus;
@@ -49,6 +50,7 @@ const createEmptyRow = (): GridRow => ({
   activityTypeId: '',
   taskDescription: '',
   deliverableType: '',
+  deliverableDescription: '',
   hours: 0,
   minutes: 0,
   billableStatus: 'billable',
@@ -105,6 +107,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
   const isRowEmpty = (row: GridRow) =>
     !row.projectId && !row.phaseId && !row.activityTypeId &&
     !row.taskDescription.trim() && !row.deliverableType &&
+    !row.deliverableDescription.trim() &&
     row.hours === 0 && row.minutes === 0;
 
   const validateAndSave = () => {
@@ -154,6 +157,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
         activityTypeId: row.activityTypeId,
         taskDescription: row.taskDescription.trim(),
         deliverableType: row.deliverableType as DeliverableType,
+        deliverableDescription: row.deliverableDescription.trim() || undefined,
         date: selectedDate,
         hours: row.hours,
         minutes: row.minutes,
@@ -186,7 +190,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={addRow} className="gap-1">
-            <Plus className="h-3.5 w-3.5" /> Add activity
+            <Plus className="h-3.5 w-3.5" /> Add entry
           </Button>
           <Button size="sm" onClick={validateAndSave} className="gap-1">
             <Save className="h-3.5 w-3.5" /> Save all
@@ -316,6 +320,15 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
             </SelectContent>
           </Select>
           {row.errors.deliverableType && <p className="text-xs text-destructive mt-1">{row.errors.deliverableType}</p>}
+        </div>
+
+        {/* Deliverable Description (optional) */}
+        <div className="sm:col-span-2 lg:col-span-3">
+          <Input
+            placeholder="Deliverable description (optional)"
+            value={row.deliverableDescription}
+            onChange={e => onUpdate(row.id, 'deliverableDescription', e.target.value)}
+          />
         </div>
 
         {/* Hours */}
