@@ -41,6 +41,9 @@ import {
   formatHours,
 } from '@/types';
 import { projects, phases, getActivitiesForPhase, parseLocalDate } from '@/data/seed';
+
+const LEAVE_PROJECT_ID = 'proj-leave';
+const ABSENCE_PHASE_ID = 'phase-absence';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { cn } from '@/lib/utils';
@@ -89,7 +92,25 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     if (project) {
       setBillableStatus(project.defaultBillableStatus);
     }
+    // Auto-fill for leave project
+    if (value === LEAVE_PROJECT_ID) {
+      setPhaseId(ABSENCE_PHASE_ID);
+      setActivityTypeId('');
+      setHours(8);
+      setMinutes(0);
+      setBillableStatus('not_billable');
+      setDeliverableType('other');
+    } else if (projectId === LEAVE_PROJECT_ID) {
+      // Reset when switching away from leave
+      setPhaseId('');
+      setActivityTypeId('');
+      setHours(0);
+      setMinutes(0);
+      setDeliverableType('');
+    }
   };
+
+  const isLeaveProject = projectId === LEAVE_PROJECT_ID;
 
   const resetForm = () => {
     setDate(parseLocalDate(selectedDate));
@@ -224,12 +245,12 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
             {/* Phase */}
             <div className="grid gap-2">
               <Label htmlFor="phase">Phase *</Label>
-              <Select value={phaseId} onValueChange={handlePhaseChange}>
+              <Select value={phaseId} onValueChange={handlePhaseChange} disabled={isLeaveProject}>
                 <SelectTrigger id="phase">
                   <SelectValue placeholder="Select phase" />
                 </SelectTrigger>
                 <SelectContent>
-                  {phases.map(phase => (
+                  {(isLeaveProject ? phases.filter(p => p.id === ABSENCE_PHASE_ID) : phases).map(phase => (
                     <SelectItem key={phase.id} value={phase.id}>
                       {phase.name}
                     </SelectItem>
@@ -277,6 +298,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
               <Select 
                 value={deliverableType} 
                 onValueChange={(value) => setDeliverableType(value as DeliverableType)}
+                disabled={isLeaveProject}
               >
                 <SelectTrigger id="deliverableType">
                   <SelectValue placeholder="Select deliverable type" />
@@ -316,6 +338,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                       setHours(parseInt(v, 10));
                       setValidationError(null);
                     }}
+                    disabled={isLeaveProject}
                   >
                     <SelectTrigger id="hours">
                       <SelectValue />
@@ -337,6 +360,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                       setMinutes(parseInt(v, 10));
                       setValidationError(null);
                     }}
+                    disabled={isLeaveProject}
                   >
                     <SelectTrigger id="minutes">
                       <SelectValue />
@@ -376,6 +400,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                     variant={billableStatus === status ? 'default' : 'outline'}
                     size="sm"
                     onClick={() => setBillableStatus(status)}
+                    disabled={isLeaveProject}
                     className={cn(
                       'flex-1',
                       billableStatus === status && status === 'billable' && 'bg-billable hover:bg-billable/90',
@@ -387,6 +412,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                   </Button>
                 ))}
               </div>
+              {isLeaveProject && (
+                <p className="text-xs text-muted-foreground">Leave is always non-billable</p>
+              )}
             </div>
 
             {/* Comments */}

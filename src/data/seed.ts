@@ -72,6 +72,13 @@ export const projects: Project[] = [
     isActive: true,
     defaultBillableStatus: 'billable',
   },
+  {
+    id: 'proj-leave',
+    name: 'Leave / Absence',
+    code: 'LEAVE',
+    isActive: true,
+    defaultBillableStatus: 'not_billable',
+  },
 ];
 
 // Phases (previously called "Phase of project")
@@ -84,6 +91,7 @@ export const phases: Phase[] = [
   { id: 'phase-master-classes', name: 'Master Classes' },
   { id: 'phase-reporting', name: 'Reporting' },
   { id: 'phase-general-admin', name: 'General Administrative' },
+  { id: 'phase-absence', name: 'Absence' },
 ];
 
 // Activity types (previously called "Type of [phase] activity")
@@ -146,6 +154,10 @@ export const activityTypes: ActivityType[] = [
   { id: 'act-admin-client-meeting', name: 'Online/external meeting with the client', phaseId: 'phase-general-admin' },
   { id: 'act-admin-partner-meeting', name: 'Online/external meeting with a partner', phaseId: 'phase-general-admin' },
   { id: 'act-admin-event', name: 'Attending an event', phaseId: 'phase-general-admin' },
+
+  // Absence activities
+  { id: 'act-leave-day', name: 'Leave day', phaseId: 'phase-absence' },
+  { id: 'act-public-holiday', name: 'Public holiday', phaseId: 'phase-absence' },
 ];
 
 // Get activities for a specific phase

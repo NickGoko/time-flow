@@ -320,6 +320,11 @@ export function WeeklyTimesheet() {
                           {entry.project.code}
                         </span>
                         <span className="font-medium truncate">{entry.project.name}</span>
+                        {entry.projectId === 'proj-leave' && (
+                          <Badge variant="secondary" className="text-xs gap-1">
+                            {entry.activityTypeId === 'act-public-holiday' ? '📅 Public holiday' : '🏖️ Leave'}
+                          </Badge>
+                        )}
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">
                         {entry.phase.name} → {entry.activityType.name}
