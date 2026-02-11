@@ -153,6 +153,20 @@ export function getActivitiesForPhase(phaseId: string): ActivityType[] {
   return activityTypes.filter(a => a.phaseId === phaseId);
 }
 
+// Format a Date as YYYY-MM-DD using local timezone (no UTC shift)
+export function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+// Parse a YYYY-MM-DD string as local midnight (not UTC)
+export function parseLocalDate(dateStr: string): Date {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  return new Date(y, m - 1, d);
+}
+
 // Helper to get current week's Monday
 export function getWeekStart(date: Date = new Date()): string {
   const d = new Date(date);
@@ -160,14 +174,14 @@ export function getWeekStart(date: Date = new Date()): string {
   const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   d.setDate(diff);
   d.setHours(0, 0, 0, 0);
-  return d.toISOString().split('T')[0];
+  return toLocalDateString(d);
 }
 
 // Helper to get date string for a day in the week
 export function getWeekDate(weekStart: string, dayOffset: number): string {
-  const d = new Date(weekStart);
+  const d = parseLocalDate(weekStart);
   d.setDate(d.getDate() + dayOffset);
-  return d.toISOString().split('T')[0];
+  return toLocalDateString(d);
 }
 
 // Generate sample time entries for current week

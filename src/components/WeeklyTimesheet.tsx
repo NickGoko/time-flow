@@ -19,7 +19,7 @@ import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { TimeEntryForm } from './TimeEntryForm';
 import { DailyGridEntry } from './DailyGridEntry';
-import { getWeekStart, getWeekDate } from '@/data/seed';
+import { getWeekStart, getWeekDate, toLocalDateString, parseLocalDate } from '@/data/seed';
 import { 
   formatDuration, 
   formatHours, 
@@ -50,14 +50,14 @@ export function WeeklyTimesheet() {
   const progressPercent = Math.min(100, (weekSummary.totalMinutes / expectedMinutes) * 100);
 
   const navigateWeek = (direction: number) => {
-    const d = new Date(weekStart);
+    const d = parseLocalDate(weekStart);
     d.setDate(d.getDate() + direction * 7);
-    setWeekStart(d.toISOString().split('T')[0]);
+    setWeekStart(toLocalDateString(d));
   };
 
   const formatWeekRange = () => {
-    const start = new Date(weekStart);
-    const end = new Date(weekStart);
+    const start = parseLocalDate(weekStart);
+    const end = parseLocalDate(weekStart);
     end.setDate(end.getDate() + 6);
     
     const startStr = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
@@ -67,7 +67,7 @@ export function WeeklyTimesheet() {
   };
 
   const isToday = (date: string) => {
-    return date === new Date().toISOString().split('T')[0];
+    return date === toLocalDateString(new Date());
   };
 
   const getBillableColor = (status: BillableStatus) => {
@@ -174,7 +174,7 @@ export function WeeklyTimesheet() {
                     "text-xs text-muted-foreground",
                     isToday(day.date) && "font-semibold text-primary"
                   )}>
-                    {new Date(day.date).getDate()}
+                    {parseLocalDate(day.date).getDate()}
                   </span>
                   <div className={cn(
                     "mt-2 text-lg font-semibold tabular-nums",
@@ -216,7 +216,7 @@ export function WeeklyTimesheet() {
         <CardHeader className="pb-3">
           <div className="flex items-center justify-between">
             <CardTitle className="text-base font-medium">
-              {new Date(selectedDate).toLocaleDateString('en-GB', {
+              {parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
                 weekday: 'long',
                 day: 'numeric',
                 month: 'long',

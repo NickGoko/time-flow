@@ -40,7 +40,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, phases, getActivitiesForPhase } from '@/data/seed';
+import { projects, phases, getActivitiesForPhase, parseLocalDate } from '@/data/seed';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { cn } from '@/lib/utils';
@@ -58,7 +58,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const [validationError, setValidationError] = useState<string | null>(null);
   
   // Form state
-  const [date, setDate] = useState<Date>(new Date(selectedDate));
+  const [date, setDate] = useState<Date>(parseLocalDate(selectedDate));
   const [projectId, setProjectId] = useState('');
   const [phaseId, setPhaseId] = useState('');
   const [activityTypeId, setActivityTypeId] = useState('');
@@ -92,7 +92,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   };
 
   const resetForm = () => {
-    setDate(new Date(selectedDate));
+    setDate(parseLocalDate(selectedDate));
     setProjectId('');
     setPhaseId('');
     setActivityTypeId('');
@@ -196,6 +196,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                     mode="single"
                     selected={date}
                     onSelect={(d) => d && setDate(d)}
+                    weekStartsOn={1}
                     initialFocus
                     className={cn("p-3 pointer-events-auto")}
                   />

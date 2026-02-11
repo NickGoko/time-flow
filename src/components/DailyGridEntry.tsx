@@ -24,7 +24,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, phases, getActivitiesForPhase } from '@/data/seed';
+import { projects, phases, getActivitiesForPhase, parseLocalDate } from '@/data/seed';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
@@ -68,7 +68,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
 
   const existingMinutes = getDailyTotalMinutes(currentUser.id, selectedDate);
 
-  const formattedDate = new Date(selectedDate).toLocaleDateString('en-GB', {
+  const formattedDate = parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
     weekday: 'long',
     day: 'numeric',
     month: 'long',
