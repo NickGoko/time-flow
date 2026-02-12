@@ -8,6 +8,7 @@ export const users: User[] = [
     email: 'sarah.mitchell@company.co.uk',
     department: 'Consulting',
     role: 'Senior Consultant',
+    appRole: 'employee',
     weeklyExpectedHours: WEEKLY_EXPECTED_HOURS,
   },
   {
@@ -16,6 +17,7 @@ export const users: User[] = [
     email: 'james.chen@company.co.uk',
     department: 'Consulting',
     role: 'Consultant',
+    appRole: 'employee',
     weeklyExpectedHours: WEEKLY_EXPECTED_HOURS,
   },
   {
@@ -24,6 +26,7 @@ export const users: User[] = [
     email: 'emily.thompson@company.co.uk',
     department: 'Operations',
     role: 'Programme Manager',
+    appRole: 'admin',
     weeklyExpectedHours: WEEKLY_EXPECTED_HOURS,
   },
 ];
