@@ -31,3 +31,25 @@ export interface UserWeekSummary {
   expectedMinutes: number;
   percentOfExpected: number;
 }
+
+export interface TeamMemberSummary {
+  userId: string;
+  userName: string;
+  totalMinutes: number;
+  compliancePercent: number;
+  billablePercent: number;
+  maybeBillableMinutes: number;
+  weekSubmitted: boolean;
+}
+
+export interface ProjectBreakdownItem {
+  projectId: string;
+  projectName: string;
+  totalMinutes: number;
+}
+
+export interface OperationalInsights {
+  maybeBillableCount: number;
+  maybeBillableMinutes: number;
+  backdatedEntryCount: number;
+}
