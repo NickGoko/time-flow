@@ -29,6 +29,7 @@ import {
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
   MAX_DAILY_HOURS,
+  MAX_PAST_DAYS,
   BillableStatus,
   toTotalMinutes,
 } from '@/types';
@@ -53,6 +54,48 @@ export function WeeklyTimesheet() {
   const dailyTotals = getDailyTotals(currentUser.id, weekStart);
   const weekSummary = getWeekSummary(currentUser.id, weekStart);
   const submitted = isWeekSubmitted(currentUser.id, weekStart);
+
+  // Date constraint boundaries
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const todayStr = toLocalDateString(today);
+  const earliest = new Date(today);
+  earliest.setDate(earliest.getDate() - MAX_PAST_DAYS);
+  const earliestStr = toLocalDateString(earliest);
+
+  const isDateAllowed = (dateStr: string) => dateStr >= earliestStr && dateStr <= todayStr;
+
+  // Week navigation bounds
+  const weekEndDate = getWeekDate(weekStart, 6); // Sunday
+  const weekStartDate = weekStart; // Monday
+  const canGoNext = weekStartDate <= todayStr; // at least Monday is not after today — but disable if entire week is future
+  const nextWeekMonday = (() => { const d = parseLocalDate(weekStart); d.setDate(d.getDate() + 7); return toLocalDateString(d); })();
+  const canNavigateNext = nextWeekMonday <= todayStr || getWeekDate(nextWeekMonday, 0) <= todayStr; // next week has at least one valid day  
+  const prevWeekSunday = (() => { const d = parseLocalDate(weekStart); d.setDate(d.getDate() - 1); return toLocalDateString(d); })();
+  const canNavigatePrev = prevWeekSunday >= earliestStr;
+
+  // Auto-select nearest valid day when week changes
+  useEffect(() => {
+    const currentSelectedDate = getWeekDate(weekStart, selectedDay);
+    if (!isDateAllowed(currentSelectedDate)) {
+      // Find nearest valid day in the week
+      for (let i = 0; i < 7; i++) {
+        const dayDate = getWeekDate(weekStart, i);
+        if (isDateAllowed(dayDate)) {
+          setSelectedDay(i);
+          return;
+        }
+      }
+      // If no valid day, try from end
+      for (let i = 6; i >= 0; i--) {
+        const dayDate = getWeekDate(weekStart, i);
+        if (isDateAllowed(dayDate)) {
+          setSelectedDay(i);
+          return;
+        }
+      }
+    }
+  }, [weekStart]);
 
   const expectedMinutes = WEEKLY_EXPECTED_HOURS * 60;
   const progressPercent = Math.min(100, (weekSummary.totalMinutes / expectedMinutes) * 100);
@@ -101,22 +144,20 @@ export function WeeklyTimesheet() {
         <CardHeader className="pb-3">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-3">
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(-1)}>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(-1)} disabled={!canNavigatePrev}>
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <CardTitle className="text-base sm:text-lg font-semibold">{formatWeekRange()}</CardTitle>
-              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(1)}>
+              <Button variant="outline" size="icon" className="h-9 w-9" onClick={() => navigateWeek(1)} disabled={!canNavigateNext}>
                 <ChevronRight className="h-4 w-4" />
               </Button>
             </div>
             
             <div className="flex items-center gap-3">
               {submitted ? (
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="gap-1.5 bg-muted">
-                    <Lock className="h-3 w-3" />
-                    Week locked
-                  </Badge>
+                <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg border border-muted bg-muted/50 text-sm text-muted-foreground">
+                  <Lock className="h-3.5 w-3.5" />
+                  <span className="font-medium">Week submitted — entries locked</span>
                 </div>
               ) : (
                 <Button 
@@ -161,17 +202,20 @@ export function WeeklyTimesheet() {
               const hasEntries = day.totalMinutes > 0;
               const isMet = day.totalMinutes >= dayTarget;
               const isAtMax = day.totalMinutes >= dayMax;
+              const allowed = isDateAllowed(day.date);
               
               return (
                 <button
                   key={day.date}
-                  onClick={() => setSelectedDay(i)}
+                  onClick={() => allowed && setSelectedDay(i)}
+                  disabled={!allowed}
                   className={cn(
                     "flex flex-col items-center p-2 sm:p-3 rounded-lg border transition-all min-h-[68px]",
-                    selectedDay === i 
+                    !allowed && "opacity-40 cursor-not-allowed",
+                    allowed && selectedDay === i 
                       ? "border-primary bg-primary/5 ring-1 ring-primary/20" 
-                      : "border-transparent hover:border-border hover:bg-muted/50",
-                    isToday(day.date) && "ring-2 ring-primary/30"
+                      : allowed ? "border-transparent hover:border-border hover:bg-muted/50" : "border-transparent",
+                    allowed && isToday(day.date) && "ring-2 ring-primary/30"
                   )}
                 >
                   <span className={cn(
@@ -182,7 +226,7 @@ export function WeeklyTimesheet() {
                   </span>
                   <span className={cn(
                     "text-xs text-muted-foreground",
-                    isToday(day.date) && "font-semibold text-primary"
+                    allowed && isToday(day.date) && "font-semibold text-primary"
                   )}>
                     {parseLocalDate(day.date).getDate()}
                   </span>
@@ -316,9 +360,11 @@ export function WeeklyTimesheet() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        <span className="font-mono text-xs text-muted-foreground">
-                          {entry.project.code}
-                        </span>
+                        {entry.project.code.toLowerCase() !== entry.project.name.toLowerCase() && (
+                          <span className="font-mono text-xs text-muted-foreground">
+                            {entry.project.code}
+                          </span>
+                        )}
                         <span className="font-medium truncate">{entry.project.name}</span>
                         {entry.projectId === 'proj-leave' && (
                           <Badge variant="secondary" className="text-xs gap-1">

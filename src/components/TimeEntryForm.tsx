@@ -37,6 +37,7 @@ import {
   MINUTE_OPTIONS,
   MAX_DAILY_MINUTES,
   MAX_DAILY_HOURS,
+  MAX_PAST_DAYS,
   toTotalMinutes,
   formatHours,
 } from '@/types';
@@ -219,6 +220,15 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                     onSelect={(d) => d && setDate(d)}
                     weekStartsOn={1}
                     initialFocus
+                    disabled={(d) => {
+                      const today = new Date();
+                      today.setHours(0, 0, 0, 0);
+                      const earliest = new Date(today);
+                      earliest.setDate(earliest.getDate() - MAX_PAST_DAYS);
+                      const compare = new Date(d);
+                      compare.setHours(0, 0, 0, 0);
+                      return compare > today || compare < earliest;
+                    }}
                     className={cn("p-3 pointer-events-auto")}
                   />
                 </PopoverContent>
