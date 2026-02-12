@@ -10,7 +10,7 @@ import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminReportsOverview from "./pages/AdminReportsOverview";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient(); // rebuild
 
 function AdminGuard() {
   const { isAdmin } = useCurrentUser();
