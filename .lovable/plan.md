@@ -1,57 +1,82 @@
 
 
-## Simplify Context Switcher — Plan
+## Enhance Data Quality Panel — Plan
 
-### Current State
+### Current State Assessment
 
-- **Role storage**: `appRole` lives in `UserContext` (state + localStorage). File: `src/contexts/UserContext.tsx`.
-- **Dropdown** (`UserSelector.tsx`): Shows 3 sample users (Sarah/James/Emily) AND a separate "Dev context" toggle (Employee/Admin). Two separate concepts in one dropdown.
-- **TopBar** (`TopBar.tsx`): Shows an "Admin" link when role is admin, requiring a second click to reach admin pages.
-- **Problem**: Switching to Admin requires two actions (select Admin role, then click Admin link). Sample users clutter the dropdown for non-dev use.
+After reviewing all files, **most requested features are already implemented**:
 
-### Files to Touch (3)
+| Requirement | Status |
+|---|---|
+| Project filter defaults to "All projects" | Already done (WeeklyChart line 43) |
+| Population defaults to "All users" | Already done (no user filter, shows all) |
+| Time range controls (This week / Last week / This month) | Already done (AdminReportsOverview lines 48-61) |
+| Chart breakdown toggle (Billable status / Top projects) | Already done (WeeklyChart lines 42, 91-106) |
+| Team summary table with all 6 columns | Already done (TeamSummaryTable.tsx) |
+| Operational insights (maybe billable + backdated entries) | Partially done — needs 2 more metrics |
+
+### What Actually Needs to Change
+
+Expand the operational insights from **2 cards** (maybe billable, backdated entries) to **4 cards** adding:
+
+- **Weeks not submitted**: derived from `weekStatuses` — count users without a submitted status for the current `weekStart`
+- **Blocked by 10h cap**: not currently tracked in the data model. Show `0` with a "Preview" note, since the front-end form silently prevents over-cap entries rather than logging rejections
+
+### Files to Edit (3)
 
 | # | File | Change |
 |---|------|--------|
-| 1 | `src/components/UserSelector.tsx` | Rewrite dropdown: hide sample users by default (behind `DEV_MODE` flag), show only "View mode" toggle, auto-navigate on role switch |
-| 2 | `src/components/TopBar.tsx` | Show an "Admin" pill/badge next to the logo when in admin mode; remove the separate "Admin" nav button |
-| 3 | `src/contexts/UserContext.tsx` | Add a `DEV_MODE` constant (default `false`) that controls whether sample user switching is exposed |
+| 1 | `src/types/reports.ts` | Add `weeksNotSubmitted` and `blockedByCap` fields to `OperationalInsights` |
+| 2 | `src/data/reportsMockData.ts` | Update `deriveOperationalInsights` to compute weeks-not-submitted from `weekStatuses` and `allUsers`; set `blockedByCap` to 0 |
+| 3 | `src/pages/AdminReportsOverview.tsx` | Expand the insights grid from 2 to 4 cards; pass `allUsers` and `weekStatuses` to the insights function |
 
 ### Step-by-Step
 
-#### 1. `src/contexts/UserContext.tsx`
-- Add `export const DEV_MODE = false;` at the top.
-- No other changes to the context logic — `appRole`, `setAppRole`, `currentUser`, `setCurrentUser` all remain.
+#### 1. `src/types/reports.ts`
 
-#### 2. `src/components/UserSelector.tsx`
-- Import `useNavigate` from `react-router-dom` and `DEV_MODE` from the context.
-- **Trigger button**: Show current mode label ("Employee" or "Admin") instead of the user name. When in admin mode, use a distinct style (e.g. primary background pill).
-- **Dropdown contents**:
-  - **When `DEV_MODE` is `false`**: Only show the two view-mode options (Employee / Admin) with check marks. No sample users.
-  - **When `DEV_MODE` is `true`**: Show a "Dev: switch user" section with the sample users list below a separator.
-- **Auto-navigate on role switch**:
-  - Clicking "Admin" calls `setAppRole('admin')` then `navigate('/admin')`.
-  - Clicking "Employee" calls `setAppRole('employee')` then `navigate('/')`.
-  - This delivers the one-click requirement: select Admin and land on the admin dashboard immediately.
+Add two fields to `OperationalInsights`:
 
-#### 3. `src/components/TopBar.tsx`
-- Remove the conditional "Admin" `Button`/`Link` (no longer needed — switching mode already navigates).
-- When `isAdmin` is true, render a small "Admin" badge/pill next to the logo text (using `Badge` component or a styled `span` with `bg-primary text-primary-foreground text-xs px-2 py-0.5 rounded`).
-- This makes the current mode visible at a glance without requiring an extra navigation click.
+```text
+weeksNotSubmitted: number   // users who haven't submitted for the period
+blockedByCap: number        // attempts blocked by 10h daily cap (0 in Preview)
+```
 
-### How It Works After Changes
+#### 2. `src/data/reportsMockData.ts`
 
-1. User opens the header dropdown — sees two options: **Employee** (checked) and **Admin**.
-2. Clicks **Admin** — app switches to admin mode, navigates to `/admin`, header shows an "Admin" pill.
-3. Opens dropdown again, clicks **Employee** — app switches back, navigates to `/`, pill disappears.
-4. If a developer sets `DEV_MODE = true` in the context file, the sample users (Sarah/James/Emily) reappear in the dropdown for testing.
+Update `deriveOperationalInsights` signature to accept `allUsers` and `weekStatuses`. Compute:
+
+- `weeksNotSubmitted`: count of users in `allUsers` who do NOT have a matching submitted `WeekStatus` for the given `weekStart`
+- `blockedByCap`: hardcoded to `0` (the form prevents over-cap entries client-side without logging)
+
+#### 3. `src/pages/AdminReportsOverview.tsx`
+
+- Import `useCurrentUser` to access `allUsers`
+- Access `weekStatuses` from `useTimeEntries()`
+- Pass them to `deriveOperationalInsights`
+- Change the insights grid from `grid-cols-1 sm:grid-cols-2` to `grid-cols-2 sm:grid-cols-4`
+- Add two new cards:
+  - **Weeks not submitted**: count + "users" label, with `Clock` icon
+  - **Blocked by cap**: "0" + "Preview" badge in muted text, with `ShieldAlert` icon
+
+### Risks / Edge Cases
+
+- **No entries**: All metrics show 0 — acceptable for Preview
+- **Month range**: `weeksNotSubmitted` only checks the first `weekStart` of the range, not every week in a month. Acceptable for V0; note in code
+- **Timezone**: All date logic uses local time per project convention
+- **blockedByCap**: Cannot be computed from current data. Showing "0 (Preview)" is honest and avoids inventing fake tracking
 
 ### Test Steps
 
-1. **Default load** — dropdown shows only Employee (checked) and Admin. No sample users visible.
-2. **Click Admin** — immediately navigates to `/admin` (or `/admin/reports/overview`). Header shows "Admin" pill.
-3. **Click Employee** — immediately navigates to `/`. "Admin" pill disappears.
-4. **Refresh in admin mode** — role persists via localStorage, admin pages remain accessible.
-5. **Direct URL `/admin` as Employee** — still shows "Not authorised" (AdminGuard unchanged).
-6. **DEV_MODE test** — set `DEV_MODE = true` in context file, reload. Sample users appear in dropdown below a separator. Switching user works as before.
+1. Navigate to `/admin/reports/overview` as Admin
+2. Verify 4 metric cards render at top (Total Hours, Billable %, Non-billable, Active Users) — unchanged
+3. Verify 4 operational insight cards render (Maybe billable, Data quality, Weeks not submitted, Blocked by cap)
+4. "Maybe billable" card shows count and hours from seed data
+5. "Data quality" card shows backdated entry count or "No flags"
+6. "Weeks not submitted" card shows count of users without submitted weeks
+7. "Blocked by cap" card shows "0" with a "Preview" note
+8. Toggle date range to "Last week" — all 4 insight cards update
+9. Toggle date range to "This month" — insights update
+10. Chart breakdown toggle still works (By status / By project)
+11. Team summary table still renders all users with correct columns
+12. Switch to Employee mode — page is blocked by AdminGuard
 
