@@ -8,15 +8,17 @@ import { WeeklyChart } from '@/components/admin/WeeklyChart';
 import { CohortWidget } from '@/components/admin/CohortWidget';
 import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
+import { useCurrentUser } from '@/contexts/UserContext';
 import { deriveMetrics, deriveOperationalInsights } from '@/data/reportsMockData';
 import { getWeekStart } from '@/data/seed';
 import { formatDuration } from '@/types';
-import { AlertTriangle, HelpCircle } from 'lucide-react';
+import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 
 type RangeOption = 'this_week' | 'last_week' | 'this_month';
 
 export default function AdminReportsOverview() {
-  const { entries } = useTimeEntries();
+  const { entries, weekStatuses } = useTimeEntries();
+  const { allUsers } = useCurrentUser();
   const [range, setRange] = useState<RangeOption>('this_week');
 
   const { weekStart, days } = useMemo(() => {
@@ -33,7 +35,7 @@ export default function AdminReportsOverview() {
   }, [range]);
 
   const metrics = useMemo(() => deriveMetrics(entries, weekStart, days), [entries, weekStart, days]);
-  const insights = useMemo(() => deriveOperationalInsights(entries, weekStart, days), [entries, weekStart, days]);
+  const insights = useMemo(() => deriveOperationalInsights(entries, weekStart, days, allUsers, weekStatuses), [entries, weekStart, days, allUsers, weekStatuses]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -64,7 +66,7 @@ export default function AdminReportsOverview() {
           <MetricCards metrics={metrics} />
 
           {/* Operational insights */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
             <Card className="border-border bg-card rounded-lg p-4 flex items-start gap-3">
               <HelpCircle className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
               <div>
@@ -86,6 +88,23 @@ export default function AdminReportsOverview() {
                 ) : (
                   <p className="text-lg font-semibold">No flags</p>
                 )}
+              </div>
+            </Card>
+            <Card className="border-border bg-card rounded-lg p-4 flex items-start gap-3">
+              <Clock className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Weeks not submitted</p>
+                <p className="text-lg font-semibold">
+                  {insights.weeksNotSubmitted} {insights.weeksNotSubmitted === 1 ? 'user' : 'users'}
+                </p>
+              </div>
+            </Card>
+            <Card className="border-border bg-card rounded-lg p-4 flex items-start gap-3">
+              <ShieldAlert className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
+              <div>
+                <p className="text-xs text-muted-foreground">Blocked by cap</p>
+                <p className="text-lg font-semibold">{insights.blockedByCap}</p>
+                <Badge variant="secondary" className="text-[10px] mt-1">Preview</Badge>
               </div>
             </Card>
           </div>

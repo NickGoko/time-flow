@@ -52,4 +52,6 @@ export interface OperationalInsights {
   maybeBillableCount: number;
   maybeBillableMinutes: number;
   backdatedEntryCount: number;
+  weeksNotSubmitted: number;
+  blockedByCap: number;
 }
