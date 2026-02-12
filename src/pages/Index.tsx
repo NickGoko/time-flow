@@ -1,7 +1,9 @@
+import { Link } from 'react-router-dom';
+import { ArrowRight } from 'lucide-react';
 import { TopBar } from '@/components/TopBar';
 import { PersonalDashboard } from '@/components/PersonalDashboard';
 import { WeeklyTimesheet } from '@/components/WeeklyTimesheet';
-
+import { Button } from '@/components/ui/button';
 import { useCurrentUser } from '@/contexts/UserContext';
 
 const Index = () => {
@@ -22,7 +24,12 @@ const Index = () => {
               Track your time and stay on top of your weekly targets
             </p>
           </div>
-          
+          <Button variant="outline" asChild className="gap-2">
+            <Link to="/me/insights">
+              History &amp; Insights
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </Button>
         </div>
 
         {/* Weekly Timesheet - Primary action area */}
