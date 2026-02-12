@@ -1,88 +1,65 @@
 
 
-## Sprint 1: Functional Integrity and Bug Fix
+## Admin Context Switch — Plan
 
-### A) Files to Touch (4)
+### A) Approach
 
-1. `src/types/index.ts`
-2. `src/components/WeeklyTimesheet.tsx`
-3. `src/components/TimeEntryForm.tsx`
-4. `src/components/DailyGridEntry.tsx`
+Extend the existing `UserContext` to include an `appRole` state (`'employee' | 'admin'`) persisted in `localStorage`. No new context/provider needed — this keeps the diff minimal and follows existing patterns. The `User.role` field (e.g. "Senior Consultant") remains untouched; `appRole` is a separate concept for access gating.
 
----
+### B) Files to Touch (5)
 
-### B) Current State Analysis
+1. **`src/contexts/UserContext.tsx`** — add `appRole` state + localStorage persistence
+2. **`src/components/UserSelector.tsx`** — add role toggle (Employee / Admin) below the user list
+3. **`src/App.tsx`** — add `/admin/*` route with guard
+4. **`src/pages/AdminDashboard.tsx`** *(new)* — placeholder admin page
+5. **`src/components/TopBar.tsx`** — conditionally show "Admin" nav link
 
-**Submission/locking**: Partially implemented. `isWeekSubmitted()` already drives:
-- Hiding entry mode tabs and "Add entry" button
-- Hiding delete icons on entry cards
-- Showing "Week locked" badge in week header
-- DailyGridEntry already shows a locked message
+### C) Detailed Changes
 
-**Daily cap**: Already enforced in both TimeEntryForm (lines 131-134) and DailyGridEntry (lines 122-131). Grid aggregates all non-empty rows before save. Both block saves exceeding 600 minutes.
+#### 1. `src/contexts/UserContext.tsx`
+- Add `appRole: 'employee' | 'admin'` to context type.
+- Initialize from `localStorage.getItem('appRole') || 'employee'`.
+- Add `setAppRole` that writes to both state and localStorage.
+- Add `isAdmin` derived boolean for convenience.
+- Export new type: `type AppRole = 'employee' | 'admin'`.
 
-**Date constraints**: Not implemented anywhere. Calendar allows any date. Week navigation has no bounds.
+#### 2. `src/components/UserSelector.tsx`
+- Below the user list in the dropdown, add a `DropdownMenuSeparator` and a toggle section.
+- Two `DropdownMenuItem` items: "Employee" and "Admin", with a check icon on the active one.
+- Calls `setAppRole(...)` on click.
+- Label: "Dev context" in muted text above the options.
 
-**Duplication bug**: Entry cards show `entry.project.code` and `entry.project.name` side-by-side (lines 319-322 of WeeklyTimesheet). For projects where code matches name (CEIC/CEIC, RISA/RISA), this reads as "CEIC CEIC" -- a visual duplication.
+#### 3. `src/App.tsx`
+- Import a simple `AdminGuard` wrapper (inline component, not a separate file).
+- `AdminGuard`: reads `isAdmin` from context; if false, renders a centered "Not authorized" message with a link back to `/`. If true, renders `<Outlet />` or the child.
+- Add route: `<Route path="/admin" element={<AdminGuard />}> <Route index element={<AdminDashboard />} /> </Route>`
 
----
+#### 4. `src/pages/AdminDashboard.tsx` *(new)*
+- Minimal placeholder: TopBar + heading "Admin Dashboard" + "Coming soon" text.
+- Uses existing layout patterns (container, spacing).
 
-### C) Step-by-Step Plan
+#### 5. `src/components/TopBar.tsx`
+- Import `useCurrentUser` and read `isAdmin`.
+- If admin, render a `NavLink` or simple link to `/admin` between the logo and user selector, labeled "Admin".
+- Uses existing `Button` variant="ghost" styling.
 
-#### 1. Add date constraint constant (`src/types/index.ts`)
+### D) Route Guard Approach
 
-Add `MAX_PAST_DAYS = 14` constant. This centralizes the 14-day lookback window.
+- **Guard component** defined inline in `App.tsx` (no extra file).
+- Uses `useCurrentUser().isAdmin`.
+- Non-admin hitting `/admin` sees a static "Not authorized" message (no redirect, to keep it simple).
+- Nav link to `/admin` is conditionally rendered only when `isAdmin === true`.
 
-#### 2. Date constraints on day selection and week navigation (`src/components/WeeklyTimesheet.tsx`)
+### E) Test Steps
 
-- Import `MAX_PAST_DAYS` and compute `earliestAllowableDate` (today minus 14 days) and `today`.
-- **Day columns**: Disable (visually grey out + non-clickable) any day column where `date > today` or `date < earliestAllowableDate`. If the currently selected day becomes invalid after week navigation, auto-select the nearest valid day.
-- **Week navigation**: Disable the "next week" arrow if the entire week (Mon-Sun) would be in the future. Disable the "previous week" arrow if the entire week would be before the 14-day window.
-- **Submitted week lock message**: Replace the simple "This week is locked" text with a more prominent banner: "Week submitted -- entries locked" using an alert-style container with the Lock icon.
-
-#### 3. Date constraints on calendar picker (`src/components/TimeEntryForm.tsx`)
-
-- Pass `disabled` prop to the `Calendar` component:
-  - `before: earliestAllowableDate` (today - 14 days)
-  - `after: today`
-- This uses react-day-picker's built-in date disabling -- greyed out, non-selectable.
-
-#### 4. Grid date validation (`src/components/DailyGridEntry.tsx`)
-
-- Add a safety check in `validateAndSave`: if `selectedDate` is outside the allowed range, show a global error and block save. This is a fallback since the day selector already constrains selection.
-
-#### 5. Fix entry card duplication (`src/components/WeeklyTimesheet.tsx`)
-
-- Change the entry card header to show project code only when it differs from the project name (case-insensitive). When they match, display only the name. This fixes CEIC/CEIC, RISA/RISA while preserving useful distinctions like "D4H / Disrupt_for_Her".
-
----
-
-### D) Risks and Edge Cases
-
-| Risk | Mitigation |
-|------|-----------|
-| **Timezone / DST**: "today" calculated at midnight could shift across DST boundaries | All date logic uses local-time helpers (`toLocalDateString`, `parseLocalDate`) per project convention -- no UTC methods |
-| **Selected day becomes invalid after week nav**: User navigates to a week partially outside the 14-day window | Auto-select the nearest valid day in that week; if no valid day exists, the week arrow is already disabled |
-| **Grid save on locked week**: DailyGridEntry already shows locked UI, but a race condition could occur if week is submitted in another tab | The `disabled` prop is already passed from WeeklyTimesheet; adding the date-range safety check reinforces this |
-| **Seed data outside window**: Sample entries are for "current week" so they remain valid | No issue expected |
-
----
-
-### E) Test Script (15 Steps)
-
-1. **Load app** -- verify current week displays with entries visible.
-2. **Navigate to next week** -- if entirely in the future, the forward arrow should be disabled.
-3. **Navigate forward anyway (if partially future)** -- future days (after today) should appear greyed out and non-clickable.
-4. **Click a future day** -- nothing should happen (day stays unselected).
-5. **Navigate back 3 weeks** -- the back arrow should be disabled once the entire week falls before the 14-day window.
-6. **On a partially-valid old week** -- days older than 14 days should be greyed out.
-7. **Open "Add entry" modal** -- open the date picker calendar. Verify tomorrow and dates beyond are greyed/unselectable. Verify dates older than 14 days are greyed/unselectable.
-8. **Try to pick tomorrow in the calendar** -- the date should not be selectable.
-9. **Try to pick a date 3 weeks ago** -- the date should not be selectable.
-10. **Add an entry for today totalling 9h** -- should succeed (under 10h cap).
-11. **Try adding another 2h entry for the same day** -- should be blocked with a cap error message (9+2 = 11 > 10).
-12. **Switch to Multiple entries mode** -- add two rows totalling 11h for the same day. Click "Save all" -- should be blocked with a cap error.
-13. **Submit the current week** -- click "Submit week", confirm the "Week submitted -- entries locked" banner appears.
-14. **Verify lock state** -- "Add entry" button gone, entry mode tabs gone, delete icons gone, grid entry disabled. All entry cards visible but read-only.
-15. **Check entry cards** -- verify project name appears once per card (no "CEIC CEIC" or "RISA RISA" duplication). Projects like Disrupt_for_Her should still show "D4H" code alongside the name.
+1. Load app — default role is "Employee", no "Admin" link visible in header.
+2. Open user dropdown — see "Dev context" section with Employee (checked) and Admin.
+3. Click "Admin" — dropdown closes, "Admin" link appears in header.
+4. Refresh page — role persists as admin (localStorage).
+5. Click "Admin" link in header — navigates to `/admin`, shows placeholder dashboard.
+6. Open user dropdown, switch back to "Employee".
+7. "Admin" link disappears from header.
+8. Navigate directly to `/admin` via URL bar — see "Not authorized" message.
+9. Switch to Admin again — `/admin` becomes accessible.
+10. Switch user (e.g. Sarah to James) — appRole remains unchanged (role is independent of user).
 
