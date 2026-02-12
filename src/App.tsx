@@ -8,6 +8,7 @@ import { TimeEntriesProvider } from "@/contexts/TimeEntriesContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/AdminDashboard";
+import AdminReportsOverview from "./pages/AdminReportsOverview";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +40,7 @@ const App = () => (
               <Route path="/" element={<Index />} />
               <Route path="/admin" element={<AdminGuard />}>
                 <Route index element={<AdminDashboard />} />
+                <Route path="reports/overview" element={<AdminReportsOverview />} />
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
