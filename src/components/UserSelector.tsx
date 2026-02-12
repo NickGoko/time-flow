@@ -1,16 +1,17 @@
-import { ChevronDown, User as UserIcon } from 'lucide-react';
+import { ChevronDown, Check } from 'lucide-react';
 import { useCurrentUser } from '@/contexts/UserContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 
 export function UserSelector() {
-  const { currentUser, setCurrentUser, allUsers } = useCurrentUser();
+  const { currentUser, setCurrentUser, allUsers, appRole, setAppRole } = useCurrentUser();
 
   const getInitials = (name: string) => {
     return name
@@ -59,6 +60,32 @@ export function UserSelector() {
             </div>
           </DropdownMenuItem>
         ))}
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">
+          Dev context
+        </div>
+        <DropdownMenuItem
+          onClick={() => setAppRole('employee')}
+          className="cursor-pointer gap-3 py-2"
+        >
+          {appRole === 'employee' ? (
+            <Check className="h-4 w-4 text-primary" />
+          ) : (
+            <span className="h-4 w-4" />
+          )}
+          <span className="font-medium">Employee</span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onClick={() => setAppRole('admin')}
+          className="cursor-pointer gap-3 py-2"
+        >
+          {appRole === 'admin' ? (
+            <Check className="h-4 w-4 text-primary" />
+          ) : (
+            <span className="h-4 w-4" />
+          )}
+          <span className="font-medium">Admin</span>
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
