@@ -1,95 +1,110 @@
 
 
-## Enrich Demo/Mock Data — Plan
+## History and Insights — Employee Page
 
-### A) Current Seed Structure
+### A) File List (5 files)
 
-| File | Contents |
-|------|----------|
-| `src/data/seed.ts` | 3 users, 7 projects, 9 phases, ~40 activity types, 7 time entries (current week only, Sarah only), empty `weekStatuses[]` |
-| `src/data/reportsMockData.ts` | 8 synthetic `mockUserWeekSummaries` (not tied to real users), plus live derivation functions (`deriveMetrics`, `deriveTeamSummary`, etc.) |
-| `src/contexts/UserContext.tsx` | Exposes `allUsers` from `seed.users` array |
-| `src/types/index.ts` | `User` interface with `appRole`, `department`, `role` fields |
-
-All report computations (`deriveMetrics`, `deriveTeamSummary`, `deriveOperationalInsights`) operate on the **real** `entries` array from `TimeEntriesContext`. The `mockUserWeekSummaries` are only used by the `CohortWidget`. So enriching `seed.ts` with more users and entries will automatically flow through to all reports.
-
-### B) Files to Edit (3)
-
-| # | File | Change |
+| # | File | Action |
 |---|------|--------|
-| 1 | `src/data/seed.ts` | Expand `users[]` to 15 users across 6 departments. Expand `timeEntries[]` to ~120-180 entries spanning 6 weeks. Add realistic `weekStatuses[]`. |
-| 2 | `src/data/reportsMockData.ts` | Replace hardcoded `mockUserWeekSummaries` with a function that derives cohort data from real entries and users (so CohortWidget also shows real data). |
-| 3 | `src/types/reports.ts` | No change needed — existing interfaces already support all fields. |
+| 1 | `src/pages/EmployeeInsights.tsx` | **New** — the full page component with all four sections |
+| 2 | `src/App.tsx` | **Edit** — add `/me/insights` route |
+| 3 | `src/pages/Index.tsx` | **Edit** — add "History and Insights" button/link to the employee home |
+| 4 | `src/contexts/TimeEntriesContext.tsx` | **Edit** — add two helper functions to the context for aggregation |
+| 5 | `src/data/seed.ts` | No change needed |
 
-Total: **2 files**.
+### B) Step-by-Step Plan
 
-### C) Data Generation Strategy
+#### 1. Add aggregation helpers to `TimeEntriesContext`
 
-#### Users (15 total)
+Add two new functions to the context interface and provider:
 
-| Department | Users | appRole |
-|---|---|---|
-| Consulting | Sarah Mitchell, James Chen, Amara Osei, David Mwangi | employee |
-| Operations | Emily Thompson, Fatima Al-Hassan | admin |
-| Business Development | Liam O'Brien, Priya Sharma, Grace Kimani | employee |
-| Finance | Raj Patel, Nneka Chukwu | employee |
-| IT | Tom Baker | admin |
-| HR | Sofia Martinez, Aisha Banda | employee |
+- `getWeeklyTotals(userId, weekStartDates[])` — returns an array of `{ weekStart, totalMinutes, billableMinutes, maybeBillableMinutes, notBillableMinutes }` for charting trends
+- `getRecentDays(userId, count)` — returns last N days with entries: `{ date, totalMinutes, billableMinutes, billablePercent, submitted }` for the history table
 
-#### Time Entries (~150 entries, 6 weeks)
+Both derive from the existing `entries` array — no new data structures needed.
 
-Generation approach — a deterministic helper function inside `seed.ts` that loops over users and weeks:
+#### 2. Create `src/pages/EmployeeInsights.tsx`
 
-- **Week range**: current week minus 5 through current week (6 weeks total)
-- **Per user per week**: 3-8 entries across Mon-Fri, targeting 30-42 hours total (with variance)
-- **Distribution patterns**:
-  - Consulting users: heavy on Flagship, CEIC, RISA (billable)
-  - BD users: heavy on Orange Corners, Disrupt_for_Her
-  - Admin/Ops users: mix of all projects + more admin time
-  - Finance/HR: more admin/reporting + Leave entries
-- **Billable mix**: ~65% billable, ~15% maybe_billable, ~20% not_billable (varies by user)
-- **Incomplete weeks**: 2-3 users will have 1-2 weeks with only 20-30 hours (realistic gaps)
-- **Backdated entries**: ~8-10 entries will have `createdAt` set 3+ days after `date` to trigger the "Data quality" insight
-- **15-minute increments**: some entries use 15/30/45 minute values, not just whole hours
-- **Leave entries**: 2-3 users take 1-2 leave days across the 6 weeks
+One page with four vertically stacked sections:
 
-#### Week Statuses
+**Section 1 — "Today" Card**
+- Shows total hours for the selected/current day
+- Small breakdown: billable / maybe / not-billable minutes
+- "Missing hours" indicator if total is below 8h target (shows delta)
+- Uses `getDailyTotalMinutes` + filtered entries from context
 
-- For past weeks (not current): ~60% of users have submitted status
-- Current week: no one submitted yet
-- This creates realistic "Weeks not submitted" counts
+**Section 2 — "This Week" Card**
+- Weekly total vs 40h expected (reuse the progress bar pattern from `WeeklyTimesheet`)
+- Submission status from `isWeekSubmitted` — show "Submitted", "In progress", or "—" with a "Preview" badge
+- Small table: top 3-5 projects by hours this week (project name, hours, percentage)
+- Derived from `getWeekSummary`
 
-#### Cohort Data
+**Section 3 — "Trend" Section**
+- Recharts `BarChart` (already available) showing weekly total hours for the last 6 weeks
+- X-axis: week labels (e.g. "3 Feb"), Y-axis: hours
+- Optional toggle (simple state boolean) to switch bars to show billable % instead of total hours
+- Uses `getWeeklyTotals` helper
+- Reuses `ChartContainer` and `ChartTooltipContent` from `src/components/ui/chart.tsx`
 
-Replace the 8 hardcoded `mockUserWeekSummaries` with a `deriveCohortSummaries(entries, users, weekStart)` function that computes real per-user totals vs expected hours, so the CohortWidget reflects actual seed data.
+**Section 4 — "History" Table**
+- Uses shadcn `Table` component (already exists)
+- Columns: Date (formatted), Hours, Billable %, Submitted?, "View" link
+- Shows last 14-21 days with any entries
+- "View" link navigates to `/?date=YYYY-MM-DD` — which will require a small URL-param reader in `Index.tsx` to preselect the day/week (or simply navigate to `/` and let the user find the week — simpler approach, just link to `/`)
+- Actually, the simplest deep-link: navigate to `/` with a query param `?week=YYYY-MM-DD&day=N`. The `WeeklyTimesheet` can optionally read this from URL search params — but that's extra complexity. For v1, the "View" link will navigate to `/` and the date context will be set via a shared state or simply left as current week. **Simplest approach**: the link navigates to `/` — no deep-linking in v1. Label button as "View week".
 
-### D) Deterministic vs Random
+#### 3. Update routing in `App.tsx`
 
-All data will be **deterministic** (seeded by user index + week offset, no `Math.random()`). This ensures consistent UI across refreshes while still looking varied. The helper will use a simple pattern:
+Add: `<Route path="/me/insights" element={<EmployeeInsights />} />`
+
+Place it before the catch-all route, inside the providers (already wrapped).
+
+#### 4. Add entry point from employee home (`Index.tsx`)
+
+Add a button or link in the header area (next to the welcome text) that navigates to `/me/insights`:
 
 ```text
-for each user (index u):
-  for each week (offset w from -5 to 0):
-    pick 2-4 projects based on (u % projectCount)
-    distribute 5-8 entries across weekdays
-    vary hours using pattern: base + ((u * 7 + w * 3) % 4) - 1
-    assign billable status based on project default + user variance
+[History and Insights ->]
 ```
 
-### E) Test Steps
+Using a `Link` from react-router-dom styled as a secondary button.
 
-1. Navigate to `/admin/reports/overview` as Emily (admin)
-2. Verify **MetricCards** show totals across all 15 users (not just 3)
-3. Verify **Active Users** count is > 10
-4. Verify **Maybe billable** insight shows non-zero count
-5. Verify **Data quality** insight shows backdated entries
-6. Verify **Weeks not submitted** shows a realistic count (not 15/15)
-7. Switch to "Last week" — numbers change, all cards still populated
-8. Switch to "This month" — higher totals across the month
-9. Check **Team Summary Table** — 15 rows with varied compliance %, billable %, and some submitted weeks
-10. Check **WeeklyChart** — stacked bars show meaningful distribution across days
-11. Toggle chart to "Top projects" — multiple project bars visible
-12. Check **CohortWidget** — buckets reflect real user distributions
-13. Switch to Sarah (employee) — employee view shows Sarah's entries only
-14. Switch back to Emily — admin reports unchanged (global view)
+### C) Helper Function Interfaces
+
+```text
+interface WeeklyTotal {
+  weekStart: string;
+  totalMinutes: number;
+  billableMinutes: number;
+  maybeBillableMinutes: number;
+  notBillableMinutes: number;
+}
+
+interface DayHistoryRow {
+  date: string;
+  totalMinutes: number;
+  billableMinutes: number;
+  billablePercent: number;
+  isSubmitted: boolean | null;  // null = unknown
+}
+
+// Added to TimeEntriesContextType:
+getWeeklyTotals(userId: string, numberOfWeeks: number): WeeklyTotal[]
+getRecentDays(userId: string, numberOfDays: number): DayHistoryRow[]
+```
+
+These aggregate from the existing `entries` and `weekStatuses` arrays — no new mock data needed.
+
+### D) Test Steps
+
+1. Navigate to `/` as Sarah (employee) — confirm "History and Insights" button/link appears
+2. Click the link — navigates to `/me/insights`
+3. **Today card**: shows hours for today, billable split, missing hours indicator
+4. **This week**: shows progress bar, top projects table, submission status
+5. **Trend chart**: 6 bars visible (one per week), hover shows tooltip with hours
+6. Toggle billable % view on chart — bars change to show percentage
+7. **History table**: 14+ rows visible with varied data, billable % column shows realistic values
+8. Click "View week" on a history row — navigates back to `/`
+9. Switch to Emily (admin) — the `/me/insights` page still works (shows Emily's personal data, not admin reports)
+10. Verify TopBar still shows correctly on the insights page
 
