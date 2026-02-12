@@ -2,17 +2,30 @@ import { UserWeekSummary, CohortBucket, ReportMetrics, DailyBreakdown, TeamMembe
 import { TimeEntry, toTotalMinutes, User, WeekStatus, WEEKLY_EXPECTED_HOURS } from '@/types';
 import { getWeekDate, parseLocalDate, projects } from '@/data/seed';
 
-// ── Mock cohort data (8 synthetic users) ────────────────────────────
-export const mockUserWeekSummaries: UserWeekSummary[] = [
-  { userId: 'mock-1', totalMinutes: 2400, expectedMinutes: 2400, percentOfExpected: 100 },
-  { userId: 'mock-2', totalMinutes: 2340, expectedMinutes: 2400, percentOfExpected: 97.5 },
-  { userId: 'mock-3', totalMinutes: 2280, expectedMinutes: 2400, percentOfExpected: 95 },
-  { userId: 'mock-4', totalMinutes: 2040, expectedMinutes: 2400, percentOfExpected: 85 },
-  { userId: 'mock-5', totalMinutes: 1920, expectedMinutes: 2400, percentOfExpected: 80 },
-  { userId: 'mock-6', totalMinutes: 1680, expectedMinutes: 2400, percentOfExpected: 70 },
-  { userId: 'mock-7', totalMinutes: 1320, expectedMinutes: 2400, percentOfExpected: 55 },
-  { userId: 'mock-8', totalMinutes: 1080, expectedMinutes: 2400, percentOfExpected: 45 },
-];
+// ── Cohort helpers (live from real data) ────────────────────────────
+
+export function deriveCohortSummaries(
+  entries: TimeEntry[],
+  allUsers: User[],
+  weekStart: string,
+  days: number = 7,
+): UserWeekSummary[] {
+  const dates = Array.from({ length: days }, (_, i) => getWeekDate(weekStart, i));
+  const filtered = entries.filter(e => dates.includes(e.date));
+  const expectedMinutes = WEEKLY_EXPECTED_HOURS * 60;
+
+  return allUsers.map(user => {
+    const totalMinutes = filtered
+      .filter(e => e.userId === user.id)
+      .reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0);
+    return {
+      userId: user.id,
+      totalMinutes,
+      expectedMinutes,
+      percentOfExpected: expectedMinutes > 0 ? Math.round((totalMinutes / expectedMinutes) * 100) : 0,
+    };
+  });
+}
 
 export function buildCohortBuckets(summaries: UserWeekSummary[]): CohortBucket[] {
   const sorted = [...summaries].sort((a, b) => b.percentOfExpected - a.percentOfExpected);
@@ -203,7 +216,6 @@ export function deriveOperationalInsights(
     }
   }
 
-  // Weeks not submitted: users without a submitted WeekStatus for this weekStart
   let weeksNotSubmitted = 0;
   if (allUsers && weekStatuses) {
     weeksNotSubmitted = allUsers.filter(
@@ -211,7 +223,6 @@ export function deriveOperationalInsights(
     ).length;
   }
 
-  // Blocked by cap: not tracked client-side, show 0 (Preview)
   const blockedByCap = 0;
 
   return { maybeBillableCount, maybeBillableMinutes, backdatedEntryCount, weeksNotSubmitted, blockedByCap };
