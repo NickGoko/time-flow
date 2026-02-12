@@ -11,8 +11,27 @@ import {
   timeEntries as seedTimeEntries, 
   weekStatuses as seedWeekStatuses, 
   getEntryWithDetails,
-  getWeekDate 
+  getWeekDate,
+  getWeekStart,
+  parseLocalDate,
+  toLocalDateString,
 } from '@/data/seed';
+
+export interface WeeklyTotal {
+  weekStart: string;
+  totalMinutes: number;
+  billableMinutes: number;
+  maybeBillableMinutes: number;
+  notBillableMinutes: number;
+}
+
+export interface DayHistoryRow {
+  date: string;
+  totalMinutes: number;
+  billableMinutes: number;
+  billablePercent: number;
+  isSubmitted: boolean | null;
+}
 
 interface TimeEntriesContextType {
   entries: TimeEntry[];
@@ -26,6 +45,8 @@ interface TimeEntriesContextType {
   getDailyTotalMinutes: (userId: string, date: string) => number;
   submitWeek: (userId: string, weekStart: string) => void;
   isWeekSubmitted: (userId: string, weekStart: string) => boolean;
+  getWeeklyTotals: (userId: string, numberOfWeeks: number) => WeeklyTotal[];
+  getRecentDays: (userId: string, numberOfDays: number) => DayHistoryRow[];
 }
 
 const TimeEntriesContext = createContext<TimeEntriesContextType | undefined>(undefined);
@@ -178,6 +199,80 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     [weekStatuses]
   );
 
+  const getWeeklyTotals = useCallback(
+    (userId: string, numberOfWeeks: number): WeeklyTotal[] => {
+      const result: WeeklyTotal[] = [];
+      const now = new Date();
+      const currentWs = getWeekStart(now);
+
+      for (let i = numberOfWeeks - 1; i >= 0; i--) {
+        const d = parseLocalDate(currentWs);
+        d.setDate(d.getDate() - i * 7);
+        const ws = toLocalDateString(d);
+        const weekDates = Array.from({ length: 7 }, (_, j) => getWeekDate(ws, j));
+        const weekEntries = entries.filter(
+          e => e.userId === userId && weekDates.includes(e.date)
+        );
+
+        let totalMinutes = 0;
+        let billableMinutes = 0;
+        let maybeBillableMinutes = 0;
+        let notBillableMinutes = 0;
+
+        for (const e of weekEntries) {
+          const mins = toTotalMinutes(e.hours, e.minutes);
+          totalMinutes += mins;
+          if (e.billableStatus === 'billable') billableMinutes += mins;
+          else if (e.billableStatus === 'maybe_billable') maybeBillableMinutes += mins;
+          else notBillableMinutes += mins;
+        }
+
+        result.push({ weekStart: ws, totalMinutes, billableMinutes, maybeBillableMinutes, notBillableMinutes });
+      }
+      return result;
+    },
+    [entries]
+  );
+
+  const getRecentDays = useCallback(
+    (userId: string, numberOfDays: number): DayHistoryRow[] => {
+      const result: DayHistoryRow[] = [];
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      for (let i = 0; i < numberOfDays; i++) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const dateStr = toLocalDateString(d);
+        const dayEntries = entries.filter(e => e.userId === userId && e.date === dateStr);
+        if (dayEntries.length === 0) continue;
+
+        let totalMinutes = 0;
+        let billableMinutes = 0;
+        for (const e of dayEntries) {
+          const mins = toTotalMinutes(e.hours, e.minutes);
+          totalMinutes += mins;
+          if (e.billableStatus === 'billable') billableMinutes += mins;
+        }
+
+        const ws = getWeekStart(d);
+        const status = weekStatuses.find(
+          s => s.userId === userId && s.weekStartDate === ws
+        );
+
+        result.push({
+          date: dateStr,
+          totalMinutes,
+          billableMinutes,
+          billablePercent: totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0,
+          isSubmitted: status?.isSubmitted ?? null,
+        });
+      }
+      return result;
+    },
+    [entries, weekStatuses]
+  );
+
   return (
     <TimeEntriesContext.Provider
       value={{
@@ -192,6 +287,8 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         getDailyTotalMinutes,
         submitWeek,
         isWeekSubmitted,
+        getWeeklyTotals,
+        getRecentDays,
       }}
     >
       {children}
