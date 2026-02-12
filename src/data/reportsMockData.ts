@@ -183,6 +183,8 @@ export function deriveOperationalInsights(
   entries: TimeEntry[],
   weekStart: string,
   days: number,
+  allUsers?: User[],
+  weekStatuses?: WeekStatus[],
 ): OperationalInsights {
   const dates = Array.from({ length: days }, (_, i) => getWeekDate(weekStart, i));
   const filtered = entries.filter(e => dates.includes(e.date));
@@ -201,5 +203,16 @@ export function deriveOperationalInsights(
     }
   }
 
-  return { maybeBillableCount, maybeBillableMinutes, backdatedEntryCount };
+  // Weeks not submitted: users without a submitted WeekStatus for this weekStart
+  let weeksNotSubmitted = 0;
+  if (allUsers && weekStatuses) {
+    weeksNotSubmitted = allUsers.filter(
+      u => !weekStatuses.some(ws => ws.userId === u.id && ws.weekStartDate === weekStart && ws.isSubmitted),
+    ).length;
+  }
+
+  // Blocked by cap: not tracked client-side, show 0 (Preview)
+  const blockedByCap = 0;
+
+  return { maybeBillableCount, maybeBillableMinutes, backdatedEntryCount, weeksNotSubmitted, blockedByCap };
 }
