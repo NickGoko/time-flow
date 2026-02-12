@@ -94,6 +94,7 @@ export const WEEKLY_EXPECTED_HOURS = 40;
 export const HOURS_PER_DAY_TARGET = 8;
 export const MAX_DAILY_HOURS = 10;
 export const MAX_DAILY_MINUTES = MAX_DAILY_HOURS * 60;
+export const MAX_PAST_DAYS = 14;
 
 // Helper: convert hours + minutes to total minutes
 export function toTotalMinutes(hours: number, minutes: number): number {

@@ -21,6 +21,7 @@ import {
   MINUTE_OPTIONS,
   MAX_DAILY_MINUTES,
   MAX_DAILY_HOURS,
+  MAX_PAST_DAYS,
   toTotalMinutes,
   formatHours,
 } from '@/types';
@@ -129,6 +130,17 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
     row.hours === 0 && row.minutes === 0;
 
   const validateAndSave = () => {
+    // Date range safety check
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const earliest = new Date(today);
+    earliest.setDate(earliest.getDate() - MAX_PAST_DAYS);
+    const selectedDateObj = parseLocalDate(selectedDate);
+    if (selectedDateObj > today || selectedDateObj < earliest) {
+      setGlobalError('Selected date is outside the allowed range (today to 14 days ago).');
+      return;
+    }
+
     const nonEmptyRows = rows.filter(r => !isRowEmpty(r));
     if (nonEmptyRows.length === 0) {
       setGlobalError('Add at least one entry before saving.');
