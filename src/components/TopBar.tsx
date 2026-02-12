@@ -2,7 +2,7 @@ import { Clock } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { UserSelector } from './UserSelector';
 import { useCurrentUser } from '@/contexts/UserContext';
-import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 
 export function TopBar() {
   const { isAdmin } = useCurrentUser();
@@ -16,18 +16,16 @@ export function TopBar() {
               <Clock className="h-5 w-5 text-primary-foreground" />
             </div>
             <div className="flex flex-col">
-              <span className="text-lg font-semibold tracking-tight">TimeTrack</span>
+              <div className="flex items-center gap-2">
+                <span className="text-lg font-semibold tracking-tight">TimeTrack</span>
+                {isAdmin && <Badge variant="default" className="text-[10px] px-2 py-0">Admin</Badge>}
+              </div>
               <span className="text-xs text-muted-foreground">Time Registration</span>
             </div>
           </Link>
         </div>
 
         <div className="flex items-center gap-2">
-          {isAdmin && (
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/admin">Admin</Link>
-            </Button>
-          )}
           <UserSelector />
         </div>
       </div>

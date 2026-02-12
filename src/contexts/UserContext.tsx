@@ -1,4 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode } from 'react';
+
+export const DEV_MODE = false;
 import { User } from '@/types';
 import { users } from '@/data/seed';
 
