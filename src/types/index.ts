@@ -2,12 +2,15 @@
 
 export type BillableStatus = 'billable' | 'maybe_billable' | 'not_billable';
 
+export type AppRole = 'admin' | 'employee';
+
 export interface User {
   id: string;
   name: string;
   email: string;
   department: string;
   role: string;
+  appRole: AppRole;
   weeklyExpectedHours: number;
   avatarUrl?: string;
 }
