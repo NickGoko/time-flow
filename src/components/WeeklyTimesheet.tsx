@@ -381,9 +381,9 @@ export function WeeklyTimesheet() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">
-                        {entry.project.type === 'internal_department' 
-                          ? `${entry.phase.name} → ${entry.activityType.name}`
-                          : `${entry.phase.name} → ${entry.activityType.name}`
+                        {entry.project.type === 'internal_department'
+                          ? `${entry.workArea?.name ?? ''}${entry.workAreaActivity ? ` → ${entry.workAreaActivity.name}` : ''}`
+                          : `${entry.phase?.name ?? ''}${entry.activityType ? ` → ${entry.activityType.name}` : ''}`
                         }
                       </p>
                       <p className="text-sm line-clamp-2">
