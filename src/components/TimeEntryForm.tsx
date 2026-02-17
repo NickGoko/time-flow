@@ -41,7 +41,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, phases, getActivitiesForPhase, parseLocalDate } from '@/data/seed';
+import { projects, getActivitiesForPhase, parseLocalDate, getAvailableWorkstreams, getPhasesForProject } from '@/data/seed';
 
 const LEAVE_PROJECT_ID = 'proj-leave';
 const ABSENCE_PHASE_ID = 'phase-absence';
@@ -243,7 +243,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.filter(p => p.isActive).map(project => (
+                  {getAvailableWorkstreams(currentUser.departmentId).map(project => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.name}
                     </SelectItem>
@@ -260,7 +260,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                   <SelectValue placeholder="Select phase" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(isLeaveProject ? phases.filter(p => p.id === ABSENCE_PHASE_ID) : phases).map(phase => (
+                  {(isLeaveProject ? getPhasesForProject(LEAVE_PROJECT_ID) : projectId ? getPhasesForProject(projectId) : []).map(phase => (
                     <SelectItem key={phase.id} value={phase.id}>
                       {phase.name}
                     </SelectItem>
