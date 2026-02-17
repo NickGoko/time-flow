@@ -13,7 +13,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -41,7 +43,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, getActivitiesForPhase, parseLocalDate, getAvailableWorkstreams, getPhasesForProject } from '@/data/seed';
+import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, getGroupedWorkstreams, getDepartmentById } from '@/data/seed';
 
 const LEAVE_PROJECT_ID = 'proj-leave';
 const ABSENCE_PHASE_ID = 'phase-absence';
@@ -57,13 +59,24 @@ interface TimeEntryFormProps {
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useCurrentUser();
-  const { addEntry, getDailyTotalMinutes } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
   const [open, setOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   
+  // Grouped workstreams
+  const grouped = useMemo(() => 
+    getGroupedWorkstreams(currentUser.departmentId, currentUser.id, entries),
+    [currentUser.departmentId, currentUser.id, entries]
+  );
+
+  const departmentName = getDepartmentById(currentUser.departmentId)?.name ?? '';
+
+  // Default to internal workstream
+  const defaultProjectId = grouped.internal.length > 0 ? grouped.internal[0].id : '';
+
   // Form state
   const [date, setDate] = useState<Date>(parseLocalDate(selectedDate));
-  const [projectId, setProjectId] = useState('');
+  const [projectId, setProjectId] = useState(defaultProjectId);
   const [phaseId, setPhaseId] = useState('');
   const [activityTypeId, setActivityTypeId] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
@@ -71,8 +84,15 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const [deliverableDescription, setDeliverableDescription] = useState('');
   const [hours, setHours] = useState<number>(0);
   const [minutes, setMinutes] = useState<number>(0);
-  const [billableStatus, setBillableStatus] = useState<BillableStatus>('billable');
+  const [billableStatus, setBillableStatus] = useState<BillableStatus>(
+    projects.find(p => p.id === defaultProjectId)?.defaultBillableStatus ?? 'billable'
+  );
   const [comments, setComments] = useState('');
+
+  // Determine selected project type
+  const selectedProject = useMemo(() => projects.find(p => p.id === projectId), [projectId]);
+  const isInternal = selectedProject?.type === 'internal_department';
+  const isLeaveProject = projectId === LEAVE_PROJECT_ID;
 
   // Get available activities based on selected phase
   const availableActivities = useMemo(() => {
@@ -93,6 +113,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     if (project) {
       setBillableStatus(project.defaultBillableStatus);
     }
+    // Reset phase/activity on project change
+    setPhaseId('');
+    setActivityTypeId('');
     // Auto-fill for leave project
     if (value === LEAVE_PROJECT_ID) {
       setPhaseId(ABSENCE_PHASE_ID);
@@ -102,20 +125,15 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
       setBillableStatus('not_billable');
       setDeliverableType('other');
     } else if (projectId === LEAVE_PROJECT_ID) {
-      // Reset when switching away from leave
-      setPhaseId('');
-      setActivityTypeId('');
       setHours(0);
       setMinutes(0);
       setDeliverableType('');
     }
   };
 
-  const isLeaveProject = projectId === LEAVE_PROJECT_ID;
-
   const resetForm = () => {
     setDate(parseLocalDate(selectedDate));
-    setProjectId('');
+    setProjectId(defaultProjectId);
     setPhaseId('');
     setActivityTypeId('');
     setTaskDescription('');
@@ -123,7 +141,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     setDeliverableDescription('');
     setHours(0);
     setMinutes(0);
-    setBillableStatus('billable');
+    setBillableStatus(projects.find(p => p.id === defaultProjectId)?.defaultBillableStatus ?? 'billable');
     setComments('');
     setValidationError(null);
   };
@@ -175,6 +193,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     setOpen(false);
     onSuccess?.();
   };
+
+  // Phase/Work area label
+  const phaseLabel = isInternal ? 'Work area' : 'Phase';
 
   return (
     <Dialog open={open} onOpenChange={(isOpen) => {
@@ -235,29 +256,52 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
               </Popover>
             </div>
 
-            {/* Project */}
+            {/* Workstream (grouped) */}
             <div className="grid gap-2">
-              <Label htmlFor="project">Project *</Label>
+              <Label htmlFor="project">Workstream *</Label>
               <Select value={projectId} onValueChange={handleProjectChange}>
                 <SelectTrigger id="project">
-                  <SelectValue placeholder="Select project" />
+                  <SelectValue placeholder="Select workstream" />
                 </SelectTrigger>
                 <SelectContent>
-                  {getAvailableWorkstreams(currentUser.departmentId).map(project => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.name}
-                    </SelectItem>
-                  ))}
+                  {grouped.recent.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Recent</SelectLabel>
+                      {grouped.recent.map(p => (
+                        <SelectItem key={`recent-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  {grouped.external.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>External projects (support)</SelectLabel>
+                      {grouped.external.map(p => (
+                        <SelectItem key={`ext-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
+                  <SelectGroup>
+                    <SelectLabel>Internal — {departmentName}</SelectLabel>
+                    {grouped.internal.map(p => (
+                      <SelectItem key={`int-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Leave</SelectLabel>
+                    {grouped.leave.map(p => (
+                      <SelectItem key={`leave-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                    ))}
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Phase */}
+            {/* Phase / Work area */}
             <div className="grid gap-2">
-              <Label htmlFor="phase">Phase *</Label>
+              <Label htmlFor="phase">{phaseLabel} *</Label>
               <Select value={phaseId} onValueChange={handlePhaseChange} disabled={isLeaveProject}>
                 <SelectTrigger id="phase">
-                  <SelectValue placeholder="Select phase" />
+                  <SelectValue placeholder={`Select ${phaseLabel.toLowerCase()}`} />
                 </SelectTrigger>
                 <SelectContent>
                   {(isLeaveProject ? getPhasesForProject(LEAVE_PROJECT_ID) : projectId ? getPhasesForProject(projectId) : []).map(phase => (
@@ -278,7 +322,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                 disabled={!phaseId}
               >
                 <SelectTrigger id="activityType">
-                  <SelectValue placeholder={phaseId ? "Select activity" : "Select phase first"} />
+                  <SelectValue placeholder={phaseId ? "Select activity" : `Select ${phaseLabel.toLowerCase()} first`} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableActivities.map(activity => (
