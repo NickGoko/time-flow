@@ -265,34 +265,25 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                   <SelectValue placeholder="Select workstream" />
                 </SelectTrigger>
                 <SelectContent>
-                  {grouped.recent.length > 0 && (
+                  {(grouped.external.length > 0 || grouped.leave.length > 0) && (
                     <SelectGroup>
-                      <SelectLabel>Recent</SelectLabel>
-                      {grouped.recent.map(p => (
-                        <SelectItem key={`recent-${p.id}`} value={p.id}>{p.name}</SelectItem>
-                      ))}
-                    </SelectGroup>
-                  )}
-                  {grouped.external.length > 0 && (
-                    <SelectGroup>
-                      <SelectLabel>External projects (support)</SelectLabel>
+                      <SelectLabel>External projects</SelectLabel>
                       {grouped.external.map(p => (
                         <SelectItem key={`ext-${p.id}`} value={p.id}>{p.name}</SelectItem>
                       ))}
+                      {grouped.leave.map(p => (
+                        <SelectItem key={`leave-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                      ))}
                     </SelectGroup>
                   )}
-                  <SelectGroup>
-                    <SelectLabel>Internal — {departmentName}</SelectLabel>
-                    {grouped.internal.map(p => (
-                      <SelectItem key={`int-${p.id}`} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Leave</SelectLabel>
-                    {grouped.leave.map(p => (
-                      <SelectItem key={`leave-${p.id}`} value={p.id}>{p.name}</SelectItem>
-                    ))}
-                  </SelectGroup>
+                  {grouped.internal.length > 0 && (
+                    <SelectGroup>
+                      <SelectLabel>Internal — {departmentName}</SelectLabel>
+                      {grouped.internal.map(p => (
+                        <SelectItem key={`int-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                      ))}
+                    </SelectGroup>
+                  )}
                 </SelectContent>
               </Select>
             </div>
