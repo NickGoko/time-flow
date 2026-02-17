@@ -10,7 +10,7 @@ interface UserContextType {
   isAdmin: boolean;
 }
 
-const UserContext = createContext<UserContextType | undefined>(undefined);
+const UserContext = createContext<UserContextType | undefined>(undefined); // refresh
 
 export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User>(users[0]);
