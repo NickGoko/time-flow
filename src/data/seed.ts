@@ -20,32 +20,32 @@ export function getDepartmentById(id: string): Department | undefined {
 // ── Demo users (18 across 8 departments) ────────────────────────────
 
 export const users: User[] = [
-  // Project Delivery (Impact)
+  // Project Delivery (Impact) — 3 users
   { id: 'user-1', name: 'Sarah Mitchell', email: 'sarah.mitchell@company.co.uk', departmentId: 'dept-consulting', role: 'Senior Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-2', name: 'James Chen', email: 'james.chen@company.co.uk', departmentId: 'dept-consulting', role: 'Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-4', name: 'Amara Osei', email: 'amara.osei@company.co.uk', departmentId: 'dept-consulting', role: 'Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-5', name: 'David Mwangi', email: 'david.mwangi@company.co.uk', departmentId: 'dept-consulting', role: 'Junior Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Operations
+  // Operations — 2 users
   { id: 'user-3', name: 'Emily Thompson', email: 'emily.thompson@company.co.uk', departmentId: 'dept-operations', role: 'Programme Manager', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-6', name: 'Fatima Al-Hassan', email: 'fatima.alhassan@company.co.uk', departmentId: 'dept-operations', role: 'Operations Lead', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Business Development
+  // Business Development — 2 users
   { id: 'user-7', name: 'Liam O\'Brien', email: 'liam.obrien@company.co.uk', departmentId: 'dept-bd', role: 'BD Manager', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-8', name: 'Priya Sharma', email: 'priya.sharma@company.co.uk', departmentId: 'dept-bd', role: 'BD Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-9', name: 'Grace Kimani', email: 'grace.kimani@company.co.uk', departmentId: 'dept-bd', role: 'BD Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Finance, Legal and Administration
+  // Finance, Legal and Administration — 2 users
   { id: 'user-10', name: 'Raj Patel', email: 'raj.patel@company.co.uk', departmentId: 'dept-finance', role: 'Financial Analyst', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-11', name: 'Nneka Chukwu', email: 'nneka.chukwu@company.co.uk', departmentId: 'dept-finance', role: 'Finance Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // IT, AI and Productivity
+  // IT, AI and Productivity — 2 users
   { id: 'user-12', name: 'Tom Baker', email: 'tom.baker@company.co.uk', departmentId: 'dept-it', role: 'IT Manager', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Human Resources
+  { id: 'user-5', name: 'David Mwangi', email: 'david.mwangi@company.co.uk', departmentId: 'dept-it', role: 'IT Support Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
+  // Human Resources — 2 users
   { id: 'user-13', name: 'Sofia Martinez', email: 'sofia.martinez@company.co.uk', departmentId: 'dept-hr', role: 'HR Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-14', name: 'Aisha Banda', email: 'aisha.banda@company.co.uk', departmentId: 'dept-hr', role: 'HR Coordinator', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Communications
+  // Communications — 2 users
   { id: 'user-15', name: 'Zara Ndlovu', email: 'zara.ndlovu@company.co.uk', departmentId: 'dept-comms', role: 'Communications Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-16', name: 'Marcus Odhiambo', email: 'marcus.odhiambo@company.co.uk', departmentId: 'dept-comms', role: 'Content Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Data, Insights and Learning (MEL)
+  // Data, Insights and Learning (MEL) — 3 users
   { id: 'user-17', name: 'Chioma Eze', email: 'chioma.eze@company.co.uk', departmentId: 'dept-mel', role: 'MEL Lead', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
   { id: 'user-18', name: 'Daniel Karanja', email: 'daniel.karanja@company.co.uk', departmentId: 'dept-mel', role: 'Data Analyst', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
+  { id: 'user-9', name: 'Grace Kimani', email: 'grace.kimani@company.co.uk', departmentId: 'dept-mel', role: 'M&E Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
 ];
 
 // ── Projects ────────────────────────────────────────────────────────
@@ -507,32 +507,32 @@ export function getEntryWithDetails(entry: TimeEntry): TimeEntryWithDetails | nu
 
 const currentWeekStart = getWeekStart();
 
-// Per-user project affinity
+// Per-user project affinity (index matches position in users[])
 const userProjectMap: Record<number, string[]> = {
-  // Consulting (external only)
+  // Project Delivery (Impact) — indices 0-2 (external only)
   0: ['proj-flagship', 'proj-ceic', 'proj-risa'],
   1: ['proj-flagship', 'proj-jica-gbv', 'proj-risa'],
   2: ['proj-ceic', 'proj-risa', 'proj-flagship'],
-  3: ['proj-jica-gbv', 'proj-ceic', 'proj-flagship'],
-  // Operations (external only)
-  4: ['proj-flagship', 'proj-jica-gbv', 'proj-ceic', 'proj-risa'],
-  5: ['proj-risa', 'proj-flagship', 'proj-ceic'],
-  // BD (mix of external + internal)
-  6: ['proj-orange-corners', 'proj-disrupt-for-her', 'proj-flagship', 'proj-internal-bd'],
-  7: ['proj-disrupt-for-her', 'proj-orange-corners', 'proj-ceic', 'proj-internal-bd'],
-  8: ['proj-orange-corners', 'proj-disrupt-for-her', 'proj-internal-bd'],
-  // Finance (internal + leave)
-  9: ['proj-internal-finance'],
-  10: ['proj-internal-finance'],
-  // IT (internal + leave)
-  11: ['proj-internal-it'],
-  // HR (internal + leave)
+  // Operations — indices 3-4 (external only)
+  3: ['proj-flagship', 'proj-jica-gbv', 'proj-ceic', 'proj-risa'],
+  4: ['proj-risa', 'proj-flagship', 'proj-ceic'],
+  // BD — indices 5-6 (mix of external + internal)
+  5: ['proj-orange-corners', 'proj-disrupt-for-her', 'proj-flagship', 'proj-internal-bd'],
+  6: ['proj-disrupt-for-her', 'proj-orange-corners', 'proj-ceic', 'proj-internal-bd'],
+  // Finance — indices 7-8 (internal + leave)
+  7: ['proj-internal-finance'],
+  8: ['proj-internal-finance'],
+  // IT — indices 9-10 (internal + leave)
+  9: ['proj-internal-it'],
+  10: ['proj-internal-it'],
+  // HR — indices 11-12 (internal + leave)
+  11: ['proj-internal-hr'],
   12: ['proj-internal-hr'],
-  13: ['proj-internal-hr'],
-  // Communications (internal + leave)
+  // Communications — indices 13-14 (internal + leave)
+  13: ['proj-internal-comms'],
   14: ['proj-internal-comms'],
-  15: ['proj-internal-comms'],
-  // MEL (internal + leave)
+  // MEL — indices 15-17 (internal + leave)
+  15: ['proj-internal-mel'],
   16: ['proj-internal-mel'],
   17: ['proj-internal-mel'],
 };
