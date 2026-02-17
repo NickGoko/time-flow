@@ -67,8 +67,16 @@ export interface TimeEntry {
   id: string;
   userId: string;
   projectId: string;
-  phaseId: string;
-  activityTypeId: string;
+
+  // External project fields (undefined when internal)
+  phaseId?: string;
+  activityTypeId?: string;
+  supportDepartmentId?: string;
+
+  // Internal workstream fields (undefined when external)
+  workAreaId?: string;
+  workAreaActivityTypeId?: string;
+
   taskDescription: string; // mandatory
   deliverableType: DeliverableType;
   deliverableDescription?: string; // optional
@@ -93,8 +101,10 @@ export interface WeekStatus {
 // Derived types for UI
 export interface TimeEntryWithDetails extends TimeEntry {
   project: Project;
-  phase: Phase;
-  activityType: ActivityType;
+  phase?: Phase;
+  activityType?: ActivityType;
+  workArea?: Phase;
+  workAreaActivity?: ActivityType;
 }
 
 export interface WeekSummary {

@@ -158,9 +158,11 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
     const newRows = rows.map(row => {
       if (isRowEmpty(row)) return row;
       const errors: Record<string, string> = {};
+      const rowProject = projects.find(p => p.id === row.projectId);
+      const rowIsInternal = rowProject?.type === 'internal_department';
       if (!row.projectId) errors.projectId = 'Required';
       if (!row.phaseId) errors.phaseId = 'Required';
-      if (!row.activityTypeId) errors.activityTypeId = 'Required';
+      if (!rowIsInternal && !row.activityTypeId) errors.activityTypeId = 'Required';
       if (!row.taskDescription.trim()) errors.taskDescription = 'Required';
       if (!row.deliverableType) errors.deliverableType = 'Required';
       if (row.hours === 0 && row.minutes === 0) errors.duration = 'Must be > 0';
@@ -187,11 +189,14 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
 
     // Save all non-empty rows
     for (const row of nonEmptyRows) {
+      const rowProject = projects.find(p => p.id === row.projectId);
+      const rowIsInternal = rowProject?.type === 'internal_department';
       addEntry({
         userId: currentUser.id,
         projectId: row.projectId,
-        phaseId: row.phaseId,
-        activityTypeId: row.activityTypeId,
+        ...(rowIsInternal
+          ? { workAreaId: row.phaseId, workAreaActivityTypeId: row.activityTypeId || undefined }
+          : { phaseId: row.phaseId, activityTypeId: row.activityTypeId, supportDepartmentId: currentUser.departmentId }),
         taskDescription: row.taskDescription.trim(),
         deliverableType: row.deliverableType as DeliverableType,
         deliverableDescription: row.deliverableDescription.trim() || undefined,

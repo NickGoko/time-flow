@@ -156,7 +156,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const isFormValid = 
     projectId && 
     phaseId && 
-    activityTypeId && 
+    (isInternal || activityTypeId) && 
     taskDescription.trim() && 
     deliverableType && 
     (hours > 0 || minutes > 0) &&
@@ -177,8 +177,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     addEntry({
       userId: currentUser.id,
       projectId,
-      phaseId,
-      activityTypeId,
+      ...(isInternal
+        ? { workAreaId: phaseId, workAreaActivityTypeId: activityTypeId || undefined }
+        : { phaseId, activityTypeId, supportDepartmentId: currentUser.departmentId }),
       taskDescription: taskDescription.trim(),
       deliverableType: deliverableType as DeliverableType,
       deliverableDescription: deliverableDescription.trim() || undefined,
