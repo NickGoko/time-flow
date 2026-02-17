@@ -5,7 +5,9 @@ import { Input } from '@/components/ui/input';
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
@@ -25,7 +27,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, getActivitiesForPhase, parseLocalDate, getAvailableWorkstreams, getPhasesForProject } from '@/data/seed';
+import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, getGroupedWorkstreams, getDepartmentById } from '@/data/seed';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
@@ -68,11 +70,17 @@ interface DailyGridEntryProps {
 
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useCurrentUser();
-  const { addEntry, getDailyTotalMinutes } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const existingMinutes = getDailyTotalMinutes(currentUser.id, selectedDate);
+
+  const grouped = useMemo(() =>
+    getGroupedWorkstreams(currentUser.departmentId, currentUser.id, entries),
+    [currentUser.departmentId, currentUser.id, entries]
+  );
+  const departmentName = getDepartmentById(currentUser.departmentId)?.name ?? '';
 
   const formattedDate = parseLocalDate(selectedDate).toLocaleDateString('en-GB', {
     weekday: 'long',
@@ -94,6 +102,8 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       if (field === 'projectId') {
         const project = projects.find(p => p.id === value);
         if (project) updated.billableStatus = project.defaultBillableStatus;
+        updated.phaseId = '';
+        updated.activityTypeId = '';
         if (value === LEAVE_PROJECT_ID) {
           updated.phaseId = ABSENCE_PHASE_ID;
           updated.activityTypeId = '';
@@ -102,9 +112,6 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
           updated.billableStatus = 'not_billable';
           updated.deliverableType = 'other';
         } else if (row.projectId === LEAVE_PROJECT_ID) {
-          // Reset when switching away from leave
-          updated.phaseId = '';
-          updated.activityTypeId = '';
           updated.hours = 0;
           updated.minutes = 0;
           updated.deliverableType = '';
@@ -246,7 +253,8 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
             onUpdate={updateRow}
             onRemove={removeRow}
             canRemove={rows.length > 1}
-            departmentId={currentUser.departmentId}
+            grouped={grouped}
+            departmentName={departmentName}
           />
         ))}
       </div>
@@ -260,11 +268,15 @@ interface GridRowEntryProps {
   onUpdate: (rowId: string, field: keyof GridRow, value: any) => void;
   onRemove: (rowId: string) => void;
   canRemove: boolean;
-  departmentId: string;
+  grouped: ReturnType<typeof getGroupedWorkstreams>;
+  departmentName: string;
 }
 
-function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, departmentId }: GridRowEntryProps) {
+function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, departmentName }: GridRowEntryProps) {
   const isLeave = row.projectId === LEAVE_PROJECT_ID;
+  const selectedProject = useMemo(() => projects.find(p => p.id === row.projectId), [row.projectId]);
+  const isInternal = selectedProject?.type === 'internal_department';
+  const phaseLabel = isInternal ? 'Work area' : 'Phase';
 
   const activities = useMemo(() => {
     if (!row.phaseId) return [];
@@ -285,26 +297,51 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, departmentId 
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {/* Project */}
+        {/* Workstream (grouped) */}
         <div>
           <Select value={row.projectId} onValueChange={v => onUpdate(row.id, 'projectId', v)}>
             <SelectTrigger className={row.errors.projectId ? 'border-destructive' : ''}>
-              <SelectValue placeholder="Project *" />
+              <SelectValue placeholder="Workstream *" />
             </SelectTrigger>
             <SelectContent>
-              {getAvailableWorkstreams(departmentId).map(p => (
-                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
-              ))}
+              {grouped.recent.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>Recent</SelectLabel>
+                  {grouped.recent.map(p => (
+                    <SelectItem key={`recent-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              {grouped.external.length > 0 && (
+                <SelectGroup>
+                  <SelectLabel>External projects (support)</SelectLabel>
+                  {grouped.external.map(p => (
+                    <SelectItem key={`ext-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                  ))}
+                </SelectGroup>
+              )}
+              <SelectGroup>
+                <SelectLabel>Internal — {departmentName}</SelectLabel>
+                {grouped.internal.map(p => (
+                  <SelectItem key={`int-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectGroup>
+              <SelectGroup>
+                <SelectLabel>Leave</SelectLabel>
+                {grouped.leave.map(p => (
+                  <SelectItem key={`leave-${p.id}`} value={p.id}>{p.name}</SelectItem>
+                ))}
+              </SelectGroup>
             </SelectContent>
           </Select>
           {row.errors.projectId && <p className="text-xs text-destructive mt-1">{row.errors.projectId}</p>}
         </div>
 
-        {/* Phase */}
+        {/* Phase / Work area */}
         <div>
           <Select value={row.phaseId} onValueChange={v => onUpdate(row.id, 'phaseId', v)} disabled={isLeave}>
             <SelectTrigger className={row.errors.phaseId ? 'border-destructive' : ''}>
-              <SelectValue placeholder="Phase *" />
+              <SelectValue placeholder={`${phaseLabel} *`} />
             </SelectTrigger>
             <SelectContent>
               {(row.projectId ? getPhasesForProject(row.projectId) : []).map(p => (
@@ -319,7 +356,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, departmentId 
         <div>
           <Select value={row.activityTypeId} onValueChange={v => onUpdate(row.id, 'activityTypeId', v)} disabled={!row.phaseId}>
             <SelectTrigger className={row.errors.activityTypeId ? 'border-destructive' : ''}>
-              <SelectValue placeholder={row.phaseId ? 'Activity *' : 'Select phase first'} />
+              <SelectValue placeholder={row.phaseId ? 'Activity *' : `Select ${phaseLabel.toLowerCase()} first`} />
             </SelectTrigger>
             <SelectContent>
               {activities.map(a => (

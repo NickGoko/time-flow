@@ -1,4 +1,4 @@
-import { User, Project, Phase, ActivityType, TimeEntry, WeekStatus, BillableStatus, DeliverableType, WEEKLY_EXPECTED_HOURS, Department, ProjectDepartmentAccess, InternalWorkArea } from '@/types';
+import { User, Project, Phase, ActivityType, TimeEntry, WeekStatus, BillableStatus, DeliverableType, WEEKLY_EXPECTED_HOURS, Department, ProjectDepartmentAccess, InternalWorkArea, GroupedWorkstreams } from '@/types';
 
 // ── Departments ─────────────────────────────────────────────────────
 
@@ -403,6 +403,44 @@ export function getAvailableWorkstreams(departmentId: string): Project[] {
   const leave = projects.filter(p => p.id === 'proj-leave');
 
   return [...internal, ...external, ...leave];
+}
+
+/** Get last N distinct workstreams used by a user, ordered by most recent */
+export function getRecentWorkstreams(userId: string, entries: TimeEntry[], limit = 5): Project[] {
+  const sorted = [...entries]
+    .filter(e => e.userId === userId)
+    .sort((a, b) => b.date.localeCompare(a.date) || b.createdAt.localeCompare(a.createdAt));
+  const seen = new Set<string>();
+  const result: Project[] = [];
+  for (const entry of sorted) {
+    if (seen.has(entry.projectId)) continue;
+    seen.add(entry.projectId);
+    const project = projects.find(p => p.id === entry.projectId);
+    if (project) result.push(project);
+    if (result.length >= limit) break;
+  }
+  return result;
+}
+
+/** Get workstreams grouped by category for dropdown */
+export function getGroupedWorkstreams(departmentId: string, userId: string, entries: TimeEntry[]): GroupedWorkstreams {
+  const internal = projects.filter(
+    p => p.isActive && p.type === 'internal_department' && p.owningDepartmentId === departmentId
+  );
+
+  const accessibleIds = new Set(
+    projectDepartmentAccess
+      .filter(a => a.departmentId === departmentId)
+      .map(a => a.workstreamId)
+  );
+  const external = projects.filter(
+    p => p.isActive && p.type === 'external_project' && p.id !== 'proj-leave' && accessibleIds.has(p.id)
+  );
+
+  const leave = projects.filter(p => p.id === 'proj-leave');
+  const recent = getRecentWorkstreams(userId, entries);
+
+  return { recent, external, internal, leave };
 }
 
 // ── Date helpers ────────────────────────────────────────────────────

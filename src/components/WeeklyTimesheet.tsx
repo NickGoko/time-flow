@@ -20,7 +20,7 @@ import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { TimeEntryForm } from './TimeEntryForm';
 import { DailyGridEntry } from './DailyGridEntry';
-import { getWeekStart, getWeekDate, toLocalDateString, parseLocalDate } from '@/data/seed';
+import { getWeekStart, getWeekDate, toLocalDateString, parseLocalDate, getDepartmentById } from '@/data/seed';
 import { 
   formatDuration, 
   formatHours, 
@@ -360,12 +360,20 @@ export function WeeklyTimesheet() {
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
-                        {entry.project.code.toLowerCase() !== entry.project.name.toLowerCase() && (
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {entry.project.code}
+                        {entry.project.type === 'internal_department' ? (
+                          <span className="font-medium truncate">
+                            Internal — {getDepartmentById(entry.project.owningDepartmentId ?? '')?.name ?? 'Unknown'}
                           </span>
+                        ) : (
+                          <>
+                            {entry.project.code.toLowerCase() !== entry.project.name.toLowerCase() && (
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {entry.project.code}
+                              </span>
+                            )}
+                            <span className="font-medium truncate">{entry.project.name}</span>
+                          </>
                         )}
-                        <span className="font-medium truncate">{entry.project.name}</span>
                         {entry.projectId === 'proj-leave' && (
                           <Badge variant="secondary" className="text-xs gap-1">
                             {entry.activityTypeId === 'act-public-holiday' ? '📅 Public holiday' : '🏖️ Leave'}
@@ -373,7 +381,10 @@ export function WeeklyTimesheet() {
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground mb-1">
-                        {entry.phase.name} → {entry.activityType.name}
+                        {entry.project.type === 'internal_department' 
+                          ? `${entry.phase.name} → ${entry.activityType.name}`
+                          : `${entry.phase.name} → ${entry.activityType.name}`
+                        }
                       </p>
                       <p className="text-sm line-clamp-2">
                         {entry.taskDescription}

@@ -153,6 +153,13 @@ export function getBillableLabel(status: BillableStatus): string {
 
 export const BILLABLE_STATUSES: BillableStatus[] = ['billable', 'maybe_billable', 'not_billable'];
 
+export interface GroupedWorkstreams {
+  recent: Project[];
+  external: Project[];
+  internal: Project[];
+  leave: Project[];
+}
+
 // Get deliverable type label
 export function getDeliverableLabel(type: DeliverableType): string {
   switch (type) {
