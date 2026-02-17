@@ -1,130 +1,171 @@
 
 
-## Workstream Selector UX — Plan
+## Update Time Entry Data Model + Full Taxonomy Overhaul
 
-### A) Component Mapping
+### Problem
 
-| Current Component | Current Behavior | Change Needed |
-|---|---|---|
-| `TimeEntryForm.tsx` | Flat "Project" dropdown via `getAvailableWorkstreams(departmentId)` | Replace with grouped Workstream dropdown (Recent / External / Internal) with conditional Phase vs Work Area fields |
-| `DailyGridEntry.tsx` | Same flat "Project" dropdown per grid row | Same grouped dropdown + conditional branching per row |
-| `WeeklyTimesheet.tsx` | Entry cards show `project.name`, `phase.name -> activityType.name` | Update display to distinguish internal vs external entries |
-| `src/data/seed.ts` | `getAvailableWorkstreams()` returns flat sorted list | Add `getGroupedWorkstreams()` returning `{ recent, external, internal }` and `getRecentWorkstreams()` helper |
+The current internal workstreams are named "Consulting -- Internal", "Finance -- Internal" etc. with generic activity types (Planning/Preparation, Execution/Delivery, Review/Follow-up). The user has provided a detailed taxonomy catalogue with department-specific work areas and realistic activity types that must replace the current seed data. Additionally, the `TimeEntry` type needs explicit workstream-aware fields.
 
-### B) File List (5 files)
+### A) File List (6 files)
 
 | # | File | Action |
 |---|------|--------|
-| 1 | `src/data/seed.ts` | Add `getGroupedWorkstreams(departmentId, entries)` and `getRecentWorkstreams(userId, entries)` helpers |
-| 2 | `src/components/TimeEntryForm.tsx` | Replace flat Project dropdown with grouped Workstream selector; add conditional Phase/Work Area branching |
-| 3 | `src/components/DailyGridEntry.tsx` | Same grouped selector + conditional branching per grid row |
-| 4 | `src/components/WeeklyTimesheet.tsx` | Update entry card display to show "Internal -- Dept" prefix for internal entries |
-| 5 | `src/types/index.ts` | Add `GroupedWorkstreams` interface |
+| 1 | `src/types/index.ts` | Extend `TimeEntry` with `supportDepartmentId?`, make `phaseId` and `activityTypeId` optional (nullable for internal entries), add `workAreaId?` and `workAreaActivityTypeId?` for internal entries |
+| 2 | `src/data/seed.ts` | Replace departments, internal workstreams, work areas, and activity types with the full taxonomy. Update seed entry generator. Add migration helper. |
+| 3 | `src/contexts/TimeEntriesContext.tsx` | Update `addEntry` signature, update `getEntryWithDetails` usage to handle nullable phase/activity fields |
+| 4 | `src/components/TimeEntryForm.tsx` | Use new field names when saving internal vs external entries |
+| 5 | `src/components/DailyGridEntry.tsx` | Same field mapping updates |
+| 6 | `src/components/WeeklyTimesheet.tsx` | Update entry display to handle nullable phase/activity and show work area fields for internal entries |
 
-### C) Step-by-Step Plan
+### B) Data Model Changes
 
-#### Step 1: Add types and helpers
-
-In `src/types/index.ts`, add:
+#### Updated `TimeEntry`
 
 ```text
-interface GroupedWorkstreams {
-  recent: Project[];       // last 5 distinct workstreams used by user
-  external: Project[];     // filtered by department access
-  internal: Project[];     // user's department internal workstream
-  leave: Project[];        // Leave / Absence (always)
+TimeEntry {
+  id, userId, date, hours, minutes, billableStatus,
+  taskDescription, deliverableType, deliverableDescription?,
+  comments?, createdAt, updatedAt,
+
+  projectId: string;             // workstream ID (unchanged)
+
+  // External project fields (null when internal)
+  phaseId?: string;
+  activityTypeId?: string;
+  supportDepartmentId?: string;  // NEW -- user's dept when logging to external project
+
+  // Internal workstream fields (null when external)
+  workAreaId?: string;           // NEW -- maps to a Phase entry for internal work areas
+  workAreaActivityTypeId?: string; // NEW -- maps to an ActivityType entry
 }
 ```
 
-In `src/data/seed.ts`, add two new exports:
-
-- `getRecentWorkstreams(userId: string, entries: TimeEntry[], limit = 5): Project[]`
-  - Filter entries by userId, sort by date descending
-  - Extract distinct projectIds in order of most recently used
-  - Map to Project objects, return first 5
-
-- `getGroupedWorkstreams(departmentId: string, userId: string, entries: TimeEntry[]): GroupedWorkstreams`
-  - `internal`: projects where `type === 'internal_department'` and `owningDepartmentId === departmentId`
-  - `external`: projects accessible via `projectDepartmentAccess` for this department (excluding leave)
-  - `leave`: the Leave / Absence project
-  - `recent`: call `getRecentWorkstreams()`, exclude duplicates already shown? No -- keep all in recent for quick access
-  - Return the grouped object
-
-#### Step 2: Update TimeEntryForm.tsx (Single entry mode)
-
-Replace the flat Project `<Select>` with a grouped dropdown using `<SelectGroup>` and `<SelectLabel>`:
+#### Updated `TimeEntryWithDetails`
 
 ```text
-<SelectContent>
-  {grouped.recent.length > 0 && (
-    <SelectGroup>
-      <SelectLabel>Recent</SelectLabel>
-      {grouped.recent.map(...)}
-    </SelectGroup>
-  )}
-  <SelectGroup>
-    <SelectLabel>External projects (support)</SelectLabel>
-    {grouped.external.map(...)}
-  </SelectGroup>
-  <SelectGroup>
-    <SelectLabel>Internal -- {departmentName}</SelectLabel>
-    {grouped.internal.map(...)}
-  </SelectGroup>
-  <SelectGroup>
-    <SelectLabel>Leave</SelectLabel>
-    {grouped.leave.map(...)}
-  </SelectGroup>
-</SelectContent>
+TimeEntryWithDetails extends TimeEntry {
+  project: Project;
+  phase?: Phase;            // present for external entries
+  activityType?: ActivityType;  // present for external entries
+  workArea?: Phase;         // present for internal entries (same Phase type, different semantics)
+  workAreaActivity?: ActivityType; // present for internal entries
+}
 ```
 
-Conditional branching after project selection:
-- Determine `selectedProject.type` from the selected projectId
-- If `external_project`: show Phase dropdown (standard phases via `getPhasesForProject`), then Activity Type dropdown filtered by phase -- existing behavior, no change needed
-- If `internal_department`: show Phase dropdown (which already returns department work areas via `getPhasesForProject`) relabeled as "Work area", then Activity Type dropdown -- also existing behavior, just relabel
-- The Phase label changes: "Phase" for external, "Work area" for internal
-- The Activity Type label changes: "Activity type" for external, "Activity (optional)" text change is not needed per spec -- keep as "Activity type"
+### C) Taxonomy Overhaul
 
-Default selection logic:
-- On form open, default projectId to the user's internal department workstream (e.g. `proj-internal-consulting` for Consulting users)
-- This pre-fills because internal workstreams are always present
+#### Departments (7 -- add Communications and Data/MEL, remove Consulting as internal)
 
-#### Step 3: Update DailyGridEntry.tsx (Multiple entries mode)
+| ID | Name |
+|----|------|
+| dept-consulting | Project Delivery (Impact) |
+| dept-operations | Operations |
+| dept-bd | Business Development |
+| dept-finance | Finance, Legal and Administration |
+| dept-it | IT, AI and Productivity |
+| dept-hr | Human Resources |
+| dept-comms | Communications |
+| dept-mel | Data, Insights and Learning (MEL) |
 
-Same grouped dropdown treatment per grid row. The `GridRowEntry` component gets the same `<SelectGroup>` structure.
+Note: "Consulting" and "Operations" users work primarily on external projects. They may also log to other departments' internal workstreams if given access, but for now they get no dedicated internal workstream since the taxonomy has none for them.
 
-Conditional branching per row:
-- Check `row.projectId` to determine type
-- Phase dropdown placeholder changes to "Work area" for internal, "Phase" for external
-- The underlying data flow (phases and activities) already works correctly via `getPhasesForProject()`
+#### Internal Workstreams (6 -- one per taxonomy section 2-7)
 
-Pass `entries` from context to compute recents (the `DailyGridEntry` component already has access to `useTimeEntries`).
+| ID | Name | Department |
+|----|------|-----------|
+| proj-internal-finance | Finance, Legal and Administration | dept-finance |
+| proj-internal-hr | Human Resources | dept-hr |
+| proj-internal-comms | Communications | dept-comms |
+| proj-internal-mel | Data, Insights and Learning (MEL) | dept-mel |
+| proj-internal-bd | Business Development | dept-bd |
+| proj-internal-it | IT, AI and Productivity | dept-it |
 
-#### Step 4: Update WeeklyTimesheet.tsx entry display
+No internal workstream for Consulting/Operations -- those users log to external projects.
 
-Currently shows: `{entry.project.name}` and `{entry.phase.name} -> {entry.activityType.name}`
+#### External Project Phases (Section 1 of taxonomy)
 
-Change to:
-- If `entry.project.type === 'internal_department'`: show "Internal -- {deptName}" as project label, and "{workAreaName} -> {activityName}" below
-- If `entry.project.type === 'external_project'`: show project name as before, and "Phase -> Activity" as before
-- Use `getDepartmentById(entry.project.owningDepartmentId)` for the department name
+Replace current generic phase activities with the full taxonomy:
 
-This avoids duplicate labels (e.g., showing "Consulting -- Internal" + "Strategy Development -> Planning" instead of repeating department info).
+- **Inception**: Kickoff preparation, Kickoff meeting, Inception report drafting, Client meeting, Partner meeting, Workplan finalisation, Stakeholder mapping, Other (specify)
+- **Recruitment**: Outreach, Candidate screening, Selection panel prep, Interviews/selection, Onboarding, External event participation, Client meeting, Partner meeting, Other (specify)
+- **Workshops / bootcamps**: Curriculum design, Speaker sourcing, Logistics planning, Workshop delivery, Attendance follow-up, Post-workshop evaluation, Client meeting, Partner meeting, Other (specify)
+- **Entrepreneur support**: 1:1 prep, 1:1 support session, Sprint support, Market research, Business diagnostics, Follow-ups, Transport, Client/partner meeting, Other (specify)
+- **Growthlabs**: Planning, Participant coordination, Facilitation, Follow-up, Outcome capture, Partner meeting, Other (specify)
+- **Master classes**: Planning, Mentor/resource mobilisation, Delivery, Learner follow-up, Partner/client meeting, Other (specify)
+- **Reporting**: Data collection, Data cleaning, Narrative drafting, Donor reporting, Case study development, Internal review, Submission, Other (specify)
+- **General administrative**: Team meeting, Internal coordination, Travel/logistics, Event attendance, Client/partner meeting, Filing/documentation, Other (specify)
 
-### D) Test Script (15 steps)
+#### Internal Work Areas + Activities (per taxonomy sections 2-7)
 
-1. Log in as Sarah Mitchell (Consulting). Navigate to the Time Registration page.
-2. Click "Add entry" (Single entry mode). Verify the Workstream dropdown shows grouped sections: Recent (if entries exist), External projects, Internal -- Consulting, Leave.
-3. Verify External projects section shows: Flagship, JICA GBV, CEIC, RISA. Does NOT show Orange Corners or Disrupt_for_Her.
-4. Verify Internal section shows: "Consulting -- Internal".
-5. Select "Consulting -- Internal". Verify the second dropdown label shows "Work area" and lists: Strategy Development, Client Relationship Management, Knowledge Management, Other.
-6. Select "Strategy Development" work area. Verify Activity type dropdown shows: Planning/Preparation, Execution/Delivery, Review/Follow-up, Other (specify).
-7. Fill remaining fields (task description, deliverable type, 2h 0min, billable status) and save. Verify entry appears in the day list with label "Internal -- Consulting" and "Strategy Development -> Planning/Preparation".
-8. Click "Add entry" again. Select "Flagship" (external). Verify Phase dropdown shows standard phases (Inception, Recruitment, Workshops, etc.) with label "Phase".
-9. Select "Inception" phase, then "Inception/kickoff preparations" activity. Fill remaining fields and save. Verify entry shows as "Flagship" with "Inception -> Inception/kickoff preparations".
-10. Switch to "Multiple entries" mode. Add a new grid row. Verify the Project dropdown in the grid row also shows grouped sections.
-11. In the grid row, select "Consulting -- Internal", then a work area and activity. Save all. Verify entry appears correctly.
-12. Switch user to Liam O'Brien (BD). Open "Add entry". Verify External section shows: Flagship, CEIC, Disrupt_for_Her, Orange Corners. Internal section shows "Business Development -- Internal".
-13. Select "Business Development -- Internal". Verify work areas show: Proposal Writing, Partnership Development, Market Research, Other.
-14. Open "Add entry" again. Verify "Recent" section appears at top showing the workstream just used (BD Internal).
-15. Switch to Raj Patel (Finance). Verify External section is empty (Finance has no external project access except Leave). Internal shows "Finance -- Internal". Select it and verify work areas: Budgeting, Financial Reporting, Audit Preparation, Other.
+Each department gets its specific work areas and detailed activity types as listed in the taxonomy. For example:
+
+**Finance, Legal and Administration** (9 work areas):
+Management accounts, Cashflow reports, Statutory returns, Bookkeeping, Bank reconciliations, Risk assessment, Audit, Policies, Internal project audit/compliance
+
+**Human Resources** (10 work areas):
+Staff welfare, L&D progress, HR policy and handbook, Culture and engagement, Payroll management, Performance management, Leave and absenteeism, Onboarding/offboarding, Probation/retention/attrition, Appraisals
+
+**Communications** (9 work areas):
+Social media, Online traffic/website, Media engagements, Speaking engagements, Knowledge/expert pieces, Storytelling/case narratives, Newsletter, Annual report, Internal comms training
+
+**Data, Insights and Learning** (8 work areas):
+Data/system availability, Capacity development, Data quality/integrity, Data insights/analysis, Insight pieces for comms, M&E resources, Data collection audits, Impact assumptions deep dive
+
+**Business Development** (7 work areas):
+Industry engagements, New funder/client conversations, Concept notes, Leads, Proposals submitted, Contracts/key account management, Databases
+
+**IT, AI and Productivity** (8 work areas):
+User support and troubleshooting, Laptop servicing, Connectivity/network, IT report, On/offboarding, Asset inventory, Training (basic/AI), Systems and knowledge documentation
+
+Every work area includes "Other (specify)" as the last activity type.
+
+### D) Migration Strategy
+
+1. **Existing seed entries** are all generated for external projects (the `generateTimeEntries` function only uses `userProjectMap` which references external project IDs). These entries already have valid `phaseId` and `activityTypeId`.
+
+2. **Migration in `getEntryWithDetails`**: When an entry has `phaseId` but no `workAreaId`, treat it as an external entry. Set `phase` and `activityType` from the existing fields. Leave `workArea` and `workAreaActivity` as undefined.
+
+3. **New entries**: The form will populate either `phaseId + activityTypeId` (external) or `workAreaId + workAreaActivityTypeId` (internal), never both.
+
+4. **Backward compatibility**: The `getEntryWithDetails` function checks which fields are populated and resolves accordingly. Old entries with `phaseId` set continue to render correctly.
+
+5. **Seed generator update**: Update `userProjectMap` and `projectPhaseActivity` to use the new phase/activity IDs from the taxonomy. Existing external project phase IDs (phase-inception, etc.) stay the same -- only the activity type IDs under them get replaced with the new taxonomy entries.
+
+### E) Validation Rules (unchanged, reinforced)
+
+- External: `phaseId` required, `activityTypeId` required, activity must belong to phase
+- Internal: `workAreaId` required, `workAreaActivityTypeId` optional (but encouraged), work area must belong to user's department
+- Duration: 15-min increments, daily sum no more than 600 min (10h)
+- Submitted week: block edits/saves (existing lock logic unchanged)
+
+### F) User Assignment Updates
+
+| User | Department | Can log to |
+|------|-----------|-----------|
+| Sarah, James, Amara, David | Project Delivery (Impact) | External projects only (no internal workstream) |
+| Emily, Fatima | Operations | External projects only (no internal workstream) |
+| Liam, Priya, Grace | Business Development | BD internal + assigned external projects |
+| Raj, Nneka | Finance, Legal and Admin | Finance internal + Leave |
+| Tom | IT, AI and Productivity | IT internal + Leave |
+| Sofia, Aisha | Human Resources | HR internal + Leave |
+
+New demo users needed for Communications and MEL departments (2 each) to test those workstreams. Total users: 18 (14 existing + 4 new).
+
+### G) Test Steps
+
+1. Load app as Sarah (Project Delivery). Verify no internal workstream appears. Only external projects + Leave shown in workstream dropdown.
+2. Select Flagship. Verify Phase dropdown shows: Inception, Recruitment, Workshops/bootcamps, Entrepreneur support, Growthlabs, Master classes, Reporting, General administrative.
+3. Select Inception phase. Verify activities show: Kickoff preparation, Kickoff meeting, Inception report drafting, Client meeting, Partner meeting, Workplan finalisation, Stakeholder mapping, Other (specify).
+4. Save entry. Verify it renders in weekly view with project name + phase + activity.
+5. Switch to Raj (Finance). Verify internal workstream "Finance, Legal and Administration" appears. No external projects except Leave.
+6. Select Finance internal. Verify Work area dropdown shows 9 work areas (Management accounts through Internal project audit/compliance).
+7. Select "Management accounts". Verify activities: GL review, Journals and accruals, Cost centre review, Variance analysis, Management pack drafting, Review meeting, Other (specify).
+8. Save entry. Verify it renders as "Finance, Legal and Administration" with "Management accounts" arrow "GL review".
+9. Old seeded entries for Raj still appear correctly in weekly view (they reference external project phases that still exist).
+10. Switch to Liam (BD). Verify BD internal workstream appears with 7 work areas.
+11. Select "Proposals submitted". Verify activities match taxonomy.
+12. Test daily cap: log entries totalling 10h, verify next entry is blocked.
+13. Submit a week. Verify entries are locked and no new entries can be added.
+14. Switch to grid mode. Verify grouped workstream dropdown works per row.
+15. Add a new Communications user. Verify Communications internal workstream appears with 9 work areas.
 
