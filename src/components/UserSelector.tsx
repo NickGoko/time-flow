@@ -1,6 +1,7 @@
 import { ChevronDown, Check } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCurrentUser } from '@/contexts/UserContext';
+import { getDepartmentById } from '@/data/seed';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -67,7 +68,7 @@ export function UserSelector() {
                 </Badge>
               </div>
               <span className="text-xs text-muted-foreground">
-                {user.department} · {user.role}
+                {getDepartmentById(user.departmentId)?.name ?? user.departmentId} · {user.role}
               </span>
             </div>
           </DropdownMenuItem>

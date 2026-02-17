@@ -25,7 +25,7 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, phases, getActivitiesForPhase, parseLocalDate } from '@/data/seed';
+import { projects, getActivitiesForPhase, parseLocalDate, getAvailableWorkstreams, getPhasesForProject } from '@/data/seed';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
@@ -246,6 +246,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
             onUpdate={updateRow}
             onRemove={removeRow}
             canRemove={rows.length > 1}
+            departmentId={currentUser.departmentId}
           />
         ))}
       </div>
@@ -259,9 +260,10 @@ interface GridRowEntryProps {
   onUpdate: (rowId: string, field: keyof GridRow, value: any) => void;
   onRemove: (rowId: string) => void;
   canRemove: boolean;
+  departmentId: string;
 }
 
-function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntryProps) {
+function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, departmentId }: GridRowEntryProps) {
   const isLeave = row.projectId === LEAVE_PROJECT_ID;
 
   const activities = useMemo(() => {
@@ -290,7 +292,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
               <SelectValue placeholder="Project *" />
             </SelectTrigger>
             <SelectContent>
-              {projects.filter(p => p.isActive).map(p => (
+              {getAvailableWorkstreams(departmentId).map(p => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
             </SelectContent>
@@ -305,7 +307,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove }: GridRowEntr
               <SelectValue placeholder="Phase *" />
             </SelectTrigger>
             <SelectContent>
-              {(isLeave ? phases.filter(p => p.id === ABSENCE_PHASE_ID) : phases).map(p => (
+              {(row.projectId ? getPhasesForProject(row.projectId) : []).map(p => (
                 <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
               ))}
             </SelectContent>

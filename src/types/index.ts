@@ -4,11 +4,18 @@ export type BillableStatus = 'billable' | 'maybe_billable' | 'not_billable';
 
 export type AppRole = 'admin' | 'employee';
 
+export interface Department {
+  id: string;
+  name: string;
+}
+
+export type WorkstreamType = 'internal_department' | 'external_project';
+
 export interface User {
   id: string;
   name: string;
   email: string;
-  department: string;
+  departmentId: string;
   role: string;
   appRole: AppRole;
   weeklyExpectedHours: number;
@@ -21,6 +28,20 @@ export interface Project {
   code: string;
   isActive: boolean;
   defaultBillableStatus: BillableStatus;
+  type: WorkstreamType;
+  owningDepartmentId?: string;
+}
+
+export interface ProjectDepartmentAccess {
+  workstreamId: string;
+  departmentId: string;
+}
+
+export interface InternalWorkArea {
+  id: string;
+  name: string;
+  departmentId: string;
+  phaseId: string; // links to the Phase entry for this work area
 }
 
 export interface Phase {
