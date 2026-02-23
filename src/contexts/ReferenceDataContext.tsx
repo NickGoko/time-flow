@@ -68,6 +68,10 @@ interface ReferenceDataContextType {
 
   // CRUD methods
   toggleDepartmentActive: (id: string) => void;
+  addProject: (project: Omit<Project, 'id'> & { id?: string }) => void;
+  updateProject: (id: string, updates: Partial<Project>) => void;
+  toggleProjectActive: (id: string) => void;
+  setProjectDepartmentAccess: (projectId: string, departmentIds: string[]) => void;
 }
 
 const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>(undefined);
@@ -76,8 +80,8 @@ const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>
 
 export function ReferenceDataProvider({ children }: { children: ReactNode }) {
   const [departments, setDepartments] = useState<Department[]>(() => loadOrSeed(LS_DEPARTMENTS, seedDepartments));
-  const [projects] = useState<Project[]>(() => loadOrSeed(LS_PROJECTS, seedProjects));
-  const [access] = useState<ProjectDepartmentAccess[]>(() => loadOrSeed(LS_ACCESS, seedAccess));
+  const [projects, setProjects] = useState<Project[]>(() => loadOrSeed(LS_PROJECTS, seedProjects));
+  const [access, setAccess] = useState<ProjectDepartmentAccess[]>(() => loadOrSeed(LS_ACCESS, seedAccess));
   const [phases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
   const [activityTypes] = useState<ActivityType[]>(() => loadOrSeed(LS_ACTIVITY_TYPES, seedActivityTypes));
   const [workAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
@@ -162,6 +166,53 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const addProject = useCallback(
+    (project: Omit<Project, 'id'> & { id?: string }) => {
+      setProjects(prev => {
+        const id = project.id || 'proj-' + Date.now();
+        const next = [...prev, { ...project, id } as Project];
+        persist(LS_PROJECTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateProject = useCallback(
+    (id: string, updates: Partial<Project>) => {
+      setProjects(prev => {
+        const next = prev.map(p => p.id === id ? { ...p, ...updates } : p);
+        persist(LS_PROJECTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleProjectActive = useCallback(
+    (id: string) => {
+      setProjects(prev => {
+        const next = prev.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p);
+        persist(LS_PROJECTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const setProjectDepartmentAccess = useCallback(
+    (projectId: string, departmentIds: string[]) => {
+      setAccess(prev => {
+        const filtered = prev.filter(a => a.workstreamId !== projectId);
+        const newRows = departmentIds.map(deptId => ({ workstreamId: projectId, departmentId: deptId }));
+        const next = [...filtered, ...newRows];
+        persist(LS_ACCESS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const value = useMemo<ReferenceDataContextType>(
     () => ({
       departments,
@@ -176,8 +227,12 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       getGroupedWorkstreams,
       getProjectById,
       toggleDepartmentActive,
+      addProject,
+      updateProject,
+      toggleProjectActive,
+      setProjectDepartmentAccess,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive],
+    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess],
   );
 
   return (
