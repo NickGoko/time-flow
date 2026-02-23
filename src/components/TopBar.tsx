@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 export function TopBar() {
   const { currentUser, isAdmin } = useAuthenticatedUser();
 
-  const homePath = isAdmin ? '/admin' : '/';
+  const homePath = isAdmin ? '/admin/reports/overview' : '/';
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">

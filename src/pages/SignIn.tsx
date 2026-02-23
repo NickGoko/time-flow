@@ -16,7 +16,7 @@ export default function SignIn() {
 
   const handleSelect = (user: User) => {
     setCurrentUser(user);
-    navigate(user.appRole === 'admin' ? '/admin' : '/');
+    navigate(user.appRole === 'admin' ? '/admin/reports/overview' : '/');
   };
 
   return (
