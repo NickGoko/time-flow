@@ -44,7 +44,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
         currentUser,
         setCurrentUser,
         signOut,
-        allUsers: users,
+        allUsers: users.filter(u => u.isActive),
         appRole: currentUser?.appRole ?? null,
         isAdmin: currentUser?.appRole === 'admin',
       }}

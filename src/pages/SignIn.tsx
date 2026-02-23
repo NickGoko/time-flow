@@ -53,7 +53,7 @@ export default function SignIn() {
                   </Badge>
                 </div>
                 <span className="text-xs text-muted-foreground">
-                  {getDepartmentById(user.departmentId)?.name ?? user.departmentId} · {user.role}
+                  {getDepartmentById(user.departmentId)?.name ?? 'Unassigned'} · {user.role}
                 </span>
               </div>
             </CardContent>
