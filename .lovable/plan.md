@@ -1,33 +1,66 @@
 
 
-## Milestone 2.3: Route and Navigation Gating
+## Milestone 2.4: Data Access Control Layer
 
-### Current State (already implemented)
+### Current State
 
-| Requirement | Status | Where |
-|---|---|---|
-| Admin routes require `role === 'admin'` | Done | `AdminGuard` in `App.tsx` lines 23-37 |
-| Employee sees "Not authorised" on `/admin/*` | Done | `AdminGuard` renders block page with back link |
-| Admin nav items visible only to admins | Done | `TopBar.tsx` lines 31-35 conditionally render Dashboard/Reports |
-| Employee nav excludes admin items | Done | `TopBar.tsx` line 37 shows only "History and Insights" |
+The `TimeEntriesContext` already enforces:
+- **Mutations**: `assertOwnership` blocks add/update/delete/submit for non-matching userId
+- **Query functions**: All take a `userId` param and filter internally
+- **Admin reports**: Access raw `entries` array from context to aggregate across all users
 
-### One remaining gap
+**Gap**: The raw `entries` array is exposed on the context and consumed by employee components (`TimeEntryForm`, `DailyGridEntry`) for the `getGroupedWorkstreams` helper. While that helper internally filters by userId, the full array is technically accessible to any component.
 
-The sign-in page routes admins to `/admin` (the placeholder dashboard). The requirement says admins should land on `/admin/reports/overview`.
+### Plan (3 files changed)
 
-### Proposed changes (2 files, 2 lines)
+#### File 1: `src/contexts/TimeEntriesContext.tsx`
 
-**File 1: `src/pages/SignIn.tsx`**
-- Line 19: change `'/admin'` to `'/admin/reports/overview'` in `handleSelect` so admin users land directly on the reports page after sign-in.
+1. Add two new scoped accessors to the context:
+   - `getOwnEntries(): TimeEntry[]` -- returns `entries.filter(e => e.userId === currentUser.id)`. Safe for employee components.
+   - `getAllEntries(): TimeEntry[]` -- returns the full array but logs a `console.warn` if called by a non-admin user: `"[TimeEntries] getAllEntries called by non-admin user"`.
 
-**File 2: `src/components/TopBar.tsx`**
-- Line 10: change `homePath` from `'/admin'` to `'/admin/reports/overview'` so the logo click takes admins to reports instead of the placeholder dashboard.
+2. Remove raw `entries` from the context type (breaking change forces all consumers to pick the right accessor).
 
-### Test steps
+3. Keep `weekStatuses` exposed (admin reports need it and it contains no sensitive data beyond submission flags).
 
-1. Clear localStorage, open the app -- redirected to `/sign-in`.
-2. Pick an **employee** (e.g. Sarah Chen) -- lands on `/` (time entry page). TopBar shows only "History and Insights".
-3. Manually type `/admin` in the URL bar -- see "Not authorised" page.
-4. Sign out, pick an **admin** (e.g. James Odhiambo) -- lands on `/admin/reports/overview`. TopBar shows "Dashboard" and "Reports".
-5. Refresh the page -- session persists, still on admin reports.
+#### File 2: `src/components/TimeEntryForm.tsx`
+
+- Replace `entries` destructure with `getOwnEntries()` call for the `getGroupedWorkstreams` usage.
+
+#### File 3: `src/components/DailyGridEntry.tsx`
+
+- Same change: replace `entries` with `getOwnEntries()`.
+
+#### File 4: `src/pages/AdminReportsOverview.tsx`
+
+- Replace `entries` with `getAllEntries()` (admin-scoped, clearly labeled).
+
+#### File 5: `src/components/admin/WeeklyChart.tsx`
+
+- Replace `entries` with `getAllEntries()`.
+
+#### File 6: `src/components/admin/TeamSummaryTable.tsx`
+
+- Replace `entries` with `getAllEntries()`.
+
+#### File 7: `src/components/admin/CohortWidget.tsx`
+
+- Replace `entries` with `getAllEntries()`.
+
+**Total: 7 files** (within the 8-file guardrail).
+
+### What This Achieves
+
+- Employee components can only access their own entries -- even if someone hacks a component, `getOwnEntries()` is pre-filtered.
+- Admin components explicitly opt into `getAllEntries()` with a dev warning if misused.
+- Mutations remain protected by existing `assertOwnership`.
+- No new service file needed -- the context IS the data access layer, now with scoped read accessors.
+
+### Test Steps
+
+1. Sign in as an employee (e.g. Sarah Chen). Create a time entry. Open browser console -- no warnings.
+2. Navigate to `/` -- verify entries display correctly (only own entries).
+3. Sign out. Sign in as admin (e.g. James Odhiambo). Go to `/admin/reports/overview` -- verify all-user reports render correctly with no console warnings.
+4. (Dev test) Temporarily call `getAllEntries()` from an employee component -- verify console warning appears.
+5. Verify no TypeScript errors (raw `entries` removed from context type).
 
