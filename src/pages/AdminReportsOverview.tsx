@@ -8,7 +8,7 @@ import { WeeklyChart } from '@/components/admin/WeeklyChart';
 import { CohortWidget } from '@/components/admin/CohortWidget';
 import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { deriveMetrics, deriveOperationalInsights } from '@/data/reportsMockData';
 import { getWeekStart } from '@/data/seed';
 import { formatDuration } from '@/types';
@@ -18,7 +18,7 @@ type RangeOption = 'this_week' | 'last_week' | 'this_month';
 
 export default function AdminReportsOverview() {
   const { entries, weekStatuses } = useTimeEntries();
-  const { allUsers } = useCurrentUser();
+  const { allUsers } = useAuthenticatedUser();
   const [range, setRange] = useState<RangeOption>('this_week');
 
   const { weekStart, days } = useMemo(() => {

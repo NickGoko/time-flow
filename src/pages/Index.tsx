@@ -4,11 +4,10 @@ import { TopBar } from '@/components/TopBar';
 import { PersonalDashboard } from '@/components/PersonalDashboard';
 import { WeeklyTimesheet } from '@/components/WeeklyTimesheet';
 import { Button } from '@/components/ui/button';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 
 const Index = () => {
-  const { currentUser } = useCurrentUser();
-
+  const { currentUser } = useAuthenticatedUser();
   return (
     <div className="min-h-screen bg-background">
       <TopBar />

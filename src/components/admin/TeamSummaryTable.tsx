@@ -10,7 +10,7 @@ import {
 } from '@/components/ui/table';
 import { Check, Minus } from 'lucide-react';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { deriveTeamSummary } from '@/data/reportsMockData';
 import { formatDuration } from '@/types';
 
@@ -21,7 +21,7 @@ interface Props {
 
 export function TeamSummaryTable({ weekStart, days }: Props) {
   const { entries, weekStatuses } = useTimeEntries();
-  const { allUsers } = useCurrentUser();
+  const { allUsers } = useAuthenticatedUser();
 
   const rows = useMemo(
     () => deriveTeamSummary(entries, weekStart, days, allUsers, weekStatuses),

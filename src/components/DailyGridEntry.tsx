@@ -28,7 +28,7 @@ import {
   formatHours,
 } from '@/types';
 import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, getGroupedWorkstreams, getDepartmentById } from '@/data/seed';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
 
@@ -69,7 +69,7 @@ interface DailyGridEntryProps {
 }
 
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
-  const { currentUser } = useCurrentUser();
+  const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);

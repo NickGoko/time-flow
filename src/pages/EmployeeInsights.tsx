@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { toLocalDateString, parseLocalDate, getWeekStart, getWeekDate } from '@/data/seed';
 import { getProjectById } from '@/data/seed';
@@ -22,7 +22,7 @@ import {
 import { cn } from '@/lib/utils';
 
 const EmployeeInsights = () => {
-  const { currentUser } = useCurrentUser();
+  const { currentUser } = useAuthenticatedUser();
   const {
     entries,
     getWeekSummary,
