@@ -38,7 +38,8 @@ interface Props {
 }
 
 export function WeeklyChart({ range }: Props) {
-  const { entries } = useTimeEntries();
+  const { getAllEntries } = useTimeEntries();
+  const entries = getAllEntries();
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('billable_status');
   const [projectFilter, setProjectFilter] = useState<string>('all');
 

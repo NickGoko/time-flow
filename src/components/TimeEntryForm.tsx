@@ -59,7 +59,8 @@ interface TimeEntryFormProps {
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const entries = getOwnEntries();
   const [open, setOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
   

@@ -17,7 +17,8 @@ import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 type RangeOption = 'this_week' | 'last_week' | 'this_month';
 
 export default function AdminReportsOverview() {
-  const { entries, weekStatuses } = useTimeEntries();
+  const { getAllEntries, weekStatuses } = useTimeEntries();
+  const entries = getAllEntries();
   const { allUsers } = useAuthenticatedUser();
   const [range, setRange] = useState<RangeOption>('this_week');
 
