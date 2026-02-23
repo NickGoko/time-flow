@@ -10,6 +10,9 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import AdminDashboard from "./pages/AdminDashboard";
 import AdminReportsOverview from "./pages/AdminReportsOverview";
+import AdminReferenceData from "./pages/admin/AdminReferenceData";
+import AdminUsers from "./pages/admin/AdminUsers";
+import AdminImportExport from "./pages/admin/AdminImportExport";
 import EmployeeInsights from "./pages/EmployeeInsights";
 import SignIn from "./pages/SignIn";
 
@@ -54,6 +57,9 @@ const App = () => (
                 <Route path="/admin" element={<AdminGuard />}>
                   <Route index element={<AdminDashboard />} />
                   <Route path="reports/overview" element={<AdminReportsOverview />} />
+                  <Route path="reference-data" element={<AdminReferenceData />} />
+                  <Route path="users" element={<AdminUsers />} />
+                  <Route path="import-export" element={<AdminImportExport />} />
                 </Route>
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
