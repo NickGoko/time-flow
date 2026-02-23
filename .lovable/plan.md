@@ -1,66 +1,35 @@
 
 
-## Milestone 2.4: Data Access Control Layer
+## Milestone 2.5: Admin-only Reference Data Management Gating
 
-### Current State
+### Current State Analysis
 
-The `TimeEntriesContext` already enforces:
-- **Mutations**: `assertOwnership` blocks add/update/delete/submit for non-matching userId
-- **Query functions**: All take a `userId` param and filter internally
-- **Admin reports**: Access raw `entries` array from context to aggregate across all users
+After thorough codebase exploration, here is what exists today:
 
-**Gap**: The raw `entries` array is exposed on the context and consumed by employee components (`TimeEntryForm`, `DailyGridEntry`) for the `getGroupedWorkstreams` helper. While that helper internally filters by userId, the full array is technically accessible to any component.
+| Requirement | Status | Details |
+|---|---|---|
+| Reference data mutation screens | **None exist** | All reference data (projects, phases, activity types, work areas, departments) is hardcoded in `src/data/seed.ts`. There are no admin CRUD screens or mutation actions for any of this data. |
+| Employee blocked from admin actions | **N/A** | No mutation actions exist to block. |
+| Entry form fetches only "active" items | **Already done** | Both `getAvailableWorkstreams()` and `getGroupedWorkstreams()` in `src/data/seed.ts` already filter by `p.isActive` (lines 389, 397, 421, 429). |
 
-### Plan (3 files changed)
+### Conclusion: No Changes Required
 
-#### File 1: `src/contexts/TimeEntriesContext.tsx`
+All three requirements are already satisfied:
 
-1. Add two new scoped accessors to the context:
-   - `getOwnEntries(): TimeEntry[]` -- returns `entries.filter(e => e.userId === currentUser.id)`. Safe for employee components.
-   - `getAllEntries(): TimeEntry[]` -- returns the full array but logs a `console.warn` if called by a non-admin user: `"[TimeEntries] getAllEntries called by non-admin user"`.
+1. **No reference data mutation UI exists** -- there are no screens, buttons, or forms that let any user (admin or employee) create, edit, or delete projects, phases, activity types, work areas, or deliverable types. Everything is static seed data.
 
-2. Remove raw `entries` from the context type (breaking change forces all consumers to pick the right accessor).
+2. **Employee cannot trigger mutations** -- since no mutation actions exist, there is nothing to block.
 
-3. Keep `weekStatuses` exposed (admin reports need it and it contains no sensitive data beyond submission flags).
+3. **Active-only filtering** -- the `getAvailableWorkstreams()` and `getGroupedWorkstreams()` functions already filter `isActive === true` before populating the entry form dropdowns. The Leave project is handled separately and always included.
 
-#### File 2: `src/components/TimeEntryForm.tsx`
+### Files Changed
 
-- Replace `entries` destructure with `getOwnEntries()` call for the `getGroupedWorkstreams` usage.
-
-#### File 3: `src/components/DailyGridEntry.tsx`
-
-- Same change: replace `entries` with `getOwnEntries()`.
-
-#### File 4: `src/pages/AdminReportsOverview.tsx`
-
-- Replace `entries` with `getAllEntries()` (admin-scoped, clearly labeled).
-
-#### File 5: `src/components/admin/WeeklyChart.tsx`
-
-- Replace `entries` with `getAllEntries()`.
-
-#### File 6: `src/components/admin/TeamSummaryTable.tsx`
-
-- Replace `entries` with `getAllEntries()`.
-
-#### File 7: `src/components/admin/CohortWidget.tsx`
-
-- Replace `entries` with `getAllEntries()`.
-
-**Total: 7 files** (within the 8-file guardrail).
-
-### What This Achieves
-
-- Employee components can only access their own entries -- even if someone hacks a component, `getOwnEntries()` is pre-filtered.
-- Admin components explicitly opt into `getAllEntries()` with a dev warning if misused.
-- Mutations remain protected by existing `assertOwnership`.
-- No new service file needed -- the context IS the data access layer, now with scoped read accessors.
+None. Zero diff.
 
 ### Test Steps
 
-1. Sign in as an employee (e.g. Sarah Chen). Create a time entry. Open browser console -- no warnings.
-2. Navigate to `/` -- verify entries display correctly (only own entries).
-3. Sign out. Sign in as admin (e.g. James Odhiambo). Go to `/admin/reports/overview` -- verify all-user reports render correctly with no console warnings.
-4. (Dev test) Temporarily call `getAllEntries()` from an employee component -- verify console warning appears.
-5. Verify no TypeScript errors (raw `entries` removed from context type).
+1. Sign in as an **employee** (e.g. Sarah Chen). Open the time entry form. Verify that all workstream/project dropdowns only show active items (all seed data is currently active, so everything should appear).
+2. Confirm there are no "Manage projects", "Edit workstreams", or similar admin CRUD buttons anywhere in the UI.
+3. Sign in as an **admin** (e.g. James Odhiambo). Confirm the same -- no reference data management screens exist yet.
+4. (Future) When admin CRUD screens are built, they should be placed under `/admin/*` routes which are already protected by the `AdminGuard`.
 
