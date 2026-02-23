@@ -24,7 +24,7 @@ import { cn } from '@/lib/utils';
 const EmployeeInsights = () => {
   const { currentUser } = useAuthenticatedUser();
   const {
-    entries,
+    getOwnEntries,
     getWeekSummary,
     isWeekSubmitted,
     getWeeklyTotals,
@@ -38,10 +38,11 @@ const EmployeeInsights = () => {
   const todayStr = toLocalDateString(today);
   const currentWeekStart = getWeekStart(today);
 
+  const ownEntries = getOwnEntries();
   // ── Section 1: Today ──────────────────────────────────────────────
   const todayEntries = useMemo(
-    () => entries.filter(e => e.userId === currentUser.id && e.date === todayStr),
-    [entries, currentUser.id, todayStr]
+    () => ownEntries.filter(e => e.userId === currentUser.id && e.date === todayStr),
+    [ownEntries, currentUser.id, todayStr]
   );
 
   const todayMinutes = useMemo(

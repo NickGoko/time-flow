@@ -8,7 +8,8 @@ import { useMemo } from 'react';
 const MIN_USERS_FOR_COHORT = 5;
 
 export function CohortWidget() {
-  const { entries } = useTimeEntries();
+  const { getAllEntries } = useTimeEntries();
+  const entries = getAllEntries();
   const { allUsers } = useAuthenticatedUser();
   const weekStart = useMemo(() => getWeekStart(), []);
 

@@ -70,7 +70,8 @@ interface DailyGridEntryProps {
 
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const entries = getOwnEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);
 

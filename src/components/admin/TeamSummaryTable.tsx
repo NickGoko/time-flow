@@ -20,7 +20,8 @@ interface Props {
 }
 
 export function TeamSummaryTable({ weekStart, days }: Props) {
-  const { entries, weekStatuses } = useTimeEntries();
+  const { getAllEntries, weekStatuses } = useTimeEntries();
+  const entries = getAllEntries();
   const { allUsers } = useAuthenticatedUser();
 
   const rows = useMemo(

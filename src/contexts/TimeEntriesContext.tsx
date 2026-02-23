@@ -35,7 +35,8 @@ export interface DayHistoryRow {
 }
 
 interface TimeEntriesContextType {
-  entries: TimeEntry[];
+  getOwnEntries: () => TimeEntry[];
+  getAllEntries: () => TimeEntry[];
   weekStatuses: WeekStatus[];
   addEntry: (entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
   updateEntry: (id: string, updates: Partial<TimeEntry>) => void;
@@ -292,10 +293,23 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     [entries, weekStatuses]
   );
 
+  const getOwnEntries = useCallback(
+    () => entries.filter(e => e.userId === currentUser?.id),
+    [entries, currentUser],
+  );
+
+  const getAllEntries = useCallback(() => {
+    if (currentUser && currentUser.appRole !== 'admin') {
+      console.warn('[TimeEntries] getAllEntries called by non-admin user');
+    }
+    return entries;
+  }, [entries, currentUser]);
+
   return (
     <TimeEntriesContext.Provider
       value={{
-        entries,
+        getOwnEntries,
+        getAllEntries,
         weekStatuses,
         addEntry,
         updateEntry,
