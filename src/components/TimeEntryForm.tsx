@@ -47,7 +47,7 @@ import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, g
 
 const LEAVE_PROJECT_ID = 'proj-leave';
 const ABSENCE_PHASE_ID = 'phase-absence';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { cn } from '@/lib/utils';
 import { CalendarIcon } from 'lucide-react';
@@ -58,7 +58,7 @@ interface TimeEntryFormProps {
 }
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
-  const { currentUser } = useCurrentUser();
+  const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, entries } = useTimeEntries();
   const [open, setOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);

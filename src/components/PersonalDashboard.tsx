@@ -1,13 +1,13 @@
 import { Clock, TrendingUp, Target, Calendar } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { getWeekStart } from '@/data/seed';
 import { formatHours, WEEKLY_EXPECTED_HOURS } from '@/types';
 import { cn } from '@/lib/utils';
 
 export function PersonalDashboard() {
-  const { currentUser } = useCurrentUser();
+  const { currentUser } = useAuthenticatedUser();
   const { getWeekSummary } = useTimeEntries();
   
   const currentWeekStart = getWeekStart();

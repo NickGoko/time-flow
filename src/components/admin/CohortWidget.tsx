@@ -1,7 +1,7 @@
 import { Card } from '@/components/ui/card';
 import { deriveCohortSummaries, buildCohortBuckets } from '@/data/reportsMockData';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { getWeekStart } from '@/data/seed';
 import { useMemo } from 'react';
 
@@ -9,7 +9,7 @@ const MIN_USERS_FOR_COHORT = 5;
 
 export function CohortWidget() {
   const { entries } = useTimeEntries();
-  const { allUsers } = useCurrentUser();
+  const { allUsers } = useAuthenticatedUser();
   const weekStart = useMemo(() => getWeekStart(), []);
 
   const summaries = useMemo(

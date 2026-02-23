@@ -16,7 +16,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
-import { useCurrentUser } from '@/contexts/UserContext';
+import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { TimeEntryForm } from './TimeEntryForm';
 import { DailyGridEntry } from './DailyGridEntry';
@@ -38,7 +38,7 @@ import { cn } from '@/lib/utils';
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function WeeklyTimesheet() {
-  const { currentUser } = useCurrentUser();
+  const { currentUser } = useAuthenticatedUser();
   const { getDailyTotals, getWeekSummary, submitWeek, isWeekSubmitted, deleteEntry } = useTimeEntries();
   
   const [weekStart, setWeekStart] = useState(getWeekStart());

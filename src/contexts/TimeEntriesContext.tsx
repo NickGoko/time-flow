@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, ReactNode, useCallback } from 'react'; // refresh
+import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
+import { useCurrentUser } from '@/contexts/UserContext';
 import { 
   TimeEntry, 
   WeekStatus, 
@@ -52,10 +53,20 @@ interface TimeEntriesContextType {
 const TimeEntriesContext = createContext<TimeEntriesContextType | undefined>(undefined);
 
 export function TimeEntriesProvider({ children }: { children: ReactNode }) {
+  const { currentUser } = useCurrentUser();
   const [entries, setEntries] = useState<TimeEntry[]>(seedTimeEntries);
   const [weekStatuses, setWeekStatuses] = useState<WeekStatus[]>(seedWeekStatuses);
 
+  const assertOwnership = (userId: string, action: string) => {
+    if (currentUser && userId !== currentUser.id) {
+      console.error(`[TimeEntries] ${action} blocked: userId "${userId}" does not match current user "${currentUser.id}"`);
+      return false;
+    }
+    return true;
+  };
+
   const addEntry = useCallback((entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
+    if (!assertOwnership(entry.userId, 'addEntry')) return;
     const newEntry: TimeEntry = {
       ...entry,
       id: `entry-${Date.now()}`,
@@ -63,21 +74,28 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
       updatedAt: new Date().toISOString(),
     };
     setEntries(prev => [...prev, newEntry]);
-  }, []);
+  }, [currentUser]);
 
   const updateEntry = useCallback((id: string, updates: Partial<TimeEntry>) => {
-    setEntries(prev =>
-      prev.map(entry =>
+    setEntries(prev => {
+      const existing = prev.find(e => e.id === id);
+      if (existing && !assertOwnership(existing.userId, 'updateEntry')) return prev;
+      return prev.map(entry =>
         entry.id === id
           ? { ...entry, ...updates, updatedAt: new Date().toISOString() }
           : entry
-      )
-    );
-  }, []);
+      );
+    });
+  }, [currentUser]);
 
   const deleteEntry = useCallback((id: string) => {
-    setEntries(prev => prev.filter(entry => entry.id !== id));
-  }, []);
+    setEntries(prev => {
+      const existing = prev.find(e => e.id === id);
+      if (existing && !assertOwnership(existing.userId, 'deleteEntry')) return prev;
+      return prev.filter(entry => entry.id !== id);
+    });
+  }, [currentUser]);
+  
 
   const getEntriesForWeek = useCallback(
     (userId: string, weekStart: string): TimeEntryWithDetails[] => {
@@ -163,6 +181,7 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
   );
 
   const submitWeek = useCallback((userId: string, weekStart: string) => {
+    if (!assertOwnership(userId, 'submitWeek')) return;
     const existingIndex = weekStatuses.findIndex(
       ws => ws.userId === userId && ws.weekStartDate === weekStart
     );
