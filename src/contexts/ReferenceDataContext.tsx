@@ -65,6 +65,9 @@ interface ReferenceDataContextType {
   getPhasesForProject: (projectId: string) => Phase[];
   getGroupedWorkstreams: (departmentId: string, userId: string, entries: TimeEntry[]) => GroupedWorkstreams;
   getProjectById: (id: string) => Project | undefined;
+
+  // CRUD methods
+  toggleDepartmentActive: (id: string) => void;
 }
 
 const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>(undefined);
@@ -72,7 +75,7 @@ const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>
 // ── Provider ────────────────────────────────────────────────────────
 
 export function ReferenceDataProvider({ children }: { children: ReactNode }) {
-  const [departments] = useState<Department[]>(() => loadOrSeed(LS_DEPARTMENTS, seedDepartments));
+  const [departments, setDepartments] = useState<Department[]>(() => loadOrSeed(LS_DEPARTMENTS, seedDepartments));
   const [projects] = useState<Project[]>(() => loadOrSeed(LS_PROJECTS, seedProjects));
   const [access] = useState<ProjectDepartmentAccess[]>(() => loadOrSeed(LS_ACCESS, seedAccess));
   const [phases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
@@ -148,6 +151,17 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     [projects, access],
   );
 
+  const toggleDepartmentActive = useCallback(
+    (id: string) => {
+      setDepartments(prev => {
+        const next = prev.map(d => d.id === id ? { ...d, isActive: !d.isActive } : d);
+        persist(LS_DEPARTMENTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const value = useMemo<ReferenceDataContextType>(
     () => ({
       departments,
@@ -161,8 +175,9 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       getPhasesForProject,
       getGroupedWorkstreams,
       getProjectById,
+      toggleDepartmentActive,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById],
+    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive],
   );
 
   return (
