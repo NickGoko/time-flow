@@ -72,6 +72,9 @@ interface ReferenceDataContextType {
   updateProject: (id: string, updates: Partial<Project>) => void;
   toggleProjectActive: (id: string) => void;
   setProjectDepartmentAccess: (projectId: string, departmentIds: string[]) => void;
+  addWorkArea: (workArea: Omit<InternalWorkArea, 'id'>) => void;
+  updateWorkArea: (id: string, updates: Partial<InternalWorkArea>) => void;
+  toggleWorkAreaActive: (id: string) => void;
 }
 
 const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>(undefined);
@@ -84,7 +87,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<ProjectDepartmentAccess[]>(() => loadOrSeed(LS_ACCESS, seedAccess));
   const [phases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
   const [activityTypes] = useState<ActivityType[]>(() => loadOrSeed(LS_ACTIVITY_TYPES, seedActivityTypes));
-  const [workAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
+  const [workAreas, setWorkAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
 
   // Persist whenever state changes (for future CRUD — currently init-only)
   // Will be wired in Bricks 2-5 via setX + useEffect
@@ -213,6 +216,40 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const addWorkArea = useCallback(
+    (workArea: Omit<InternalWorkArea, 'id'>) => {
+      setWorkAreas(prev => {
+        const id = 'wa-' + Date.now();
+        const next = [...prev, { ...workArea, id } as InternalWorkArea];
+        persist(LS_WORK_AREAS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateWorkArea = useCallback(
+    (id: string, updates: Partial<InternalWorkArea>) => {
+      setWorkAreas(prev => {
+        const next = prev.map(wa => wa.id === id ? { ...wa, ...updates } : wa);
+        persist(LS_WORK_AREAS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleWorkAreaActive = useCallback(
+    (id: string) => {
+      setWorkAreas(prev => {
+        const next = prev.map(wa => wa.id === id ? { ...wa, isActive: !wa.isActive } : wa);
+        persist(LS_WORK_AREAS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const value = useMemo<ReferenceDataContextType>(
     () => ({
       departments,
@@ -231,8 +268,11 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       updateProject,
       toggleProjectActive,
       setProjectDepartmentAccess,
+      addWorkArea,
+      updateWorkArea,
+      toggleWorkAreaActive,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess],
+    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive],
   );
 
   return (
