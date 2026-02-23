@@ -1,205 +1,83 @@
 
 
-## Milestone 6: Admin-Managed Dropdowns + Bulk Import/Export
+## Brick 2: Admin Navigation + Reusable CRUD Scaffolding
 
-### A) Data Model — Missing Columns & Tables
+### Overview
 
-All data currently lives as static arrays in `src/data/seed.ts`. To support admin CRUD, we need mutable state. No new Supabase tables are needed (yet). The following type changes are required:
+Create the three admin page shells (`/admin/reference-data`, `/admin/users`, `/admin/import-export`) with proper routing, plus a set of reusable CRUD building-block components. Wire one real entity (Departments) as a working example to prove the pattern end-to-end.
 
-| Entity | Current Location | Missing Fields |
-|---|---|---|
-| `Phase` | `src/types/index.ts` | Add `isActive: boolean` |
-| `ActivityType` | `src/types/index.ts` | Add `isActive: boolean` |
-| `InternalWorkArea` | `src/types/index.ts` | Add `isActive: boolean` |
-| `Department` | `src/types/index.ts` | Add `isActive: boolean` |
-| `DeliverableType` | string union in types | No change (keep as constant; optional CRUD deferred) |
-| `Project` | `src/types/index.ts` | Already has `isActive` -- no change |
-| `User` | `src/types/index.ts` | Already has `isActive` -- no change |
-| `ProjectDepartmentAccess` | `src/types/index.ts` | No change needed |
+### Files (5 files, within the 6-file limit)
 
-### B) Route Map & Nav Structure
+| # | File | Action | Description |
+|---|---|---|---|
+| 1 | `src/App.tsx` | EDIT | Add lazy routes for `/admin/reference-data`, `/admin/users`, `/admin/import-export` inside the existing AdminGuard block |
+| 2 | `src/pages/admin/AdminReferenceData.tsx` | NEW | Tabbed page shell with three tabs: Workstreams, Phases, Work Areas. Each tab renders a placeholder until entity-specific CRUD is wired in later bricks. The Workstreams tab is initially a "Coming soon" card. |
+| 3 | `src/pages/admin/AdminUsers.tsx` | NEW | Page shell with "Users" heading and placeholder content ("Coming soon — Brick 5"). Follows same layout pattern as AdminReportsOverview (TopBar + container). |
+| 4 | `src/pages/admin/AdminImportExport.tsx` | NEW | Page shell with Export / Import tabs. Placeholder content for both tabs. |
+| 5 | `src/components/admin/AdminCrudTable.tsx` | NEW | Reusable generic table component with: column definitions, active/inactive toggle, add button, edit button, search/filter input. Accepts generic `<T>` rows via props. Includes an inline `ConfirmDeactivateDialog` (AlertDialog) and an `EditDialog` wrapper (Dialog shell that accepts children as the form body). One working example is rendered inside AdminReferenceData's first tab: a **Departments** mini-table showing id, name, isActive toggle — proving the full pattern. |
+
+### Component Design: AdminCrudTable
 
 ```text
-/admin
-  /admin/reports/overview    (existing)
-  /admin/reference-data      (NEW — tabbed: Workstreams | Phases | Work Areas)
-  /admin/users               (NEW — Users CRUD table)
-  /admin/import-export       (NEW — tabbed: Export | Import)
+Props<T extends { id: string; isActive: boolean }>:
+  - columns: { key: keyof T; header: string; render?: (row: T) => ReactNode }[]
+  - data: T[]
+  - onToggleActive: (id: string) => void
+  - onEdit: (row: T) => void
+  - onAdd: () => void
+  - addLabel: string           // e.g. "Add Workstream"
+  - entityLabel: string        // e.g. "workstream" (for confirm dialog text)
+  - searchPlaceholder?: string // optional filter input
+
+Built-in sub-components (not exported separately):
+  - ActiveToggle: Switch component with confirm-deactivate AlertDialog
+  - ConfirmDeactivateDialog: "Are you sure?" with entity name
+  - EditDialog: Dialog shell (open/close state managed by parent page)
 ```
 
-The existing admin nav in `TopBar.tsx` adds two links: **Reference Data** and **Users**. Import/Export lives under Reference Data or as a third nav item.
+This single file provides all the reusable CRUD primitives. Entity-specific pages (Bricks 3-5) will import `AdminCrudTable` and pass their own columns, data, and handlers.
 
-### C) Brick Sequence (7 bricks, each 6 files max)
+### Routing Changes (App.tsx)
 
----
+Add three new routes inside the existing `<Route path="/admin" element={<AdminGuard />}>` block:
 
-#### Brick 1: ReferenceDataContext + Admin Nav (foundation)
+```text
+<Route path="reference-data" element={<AdminReferenceData />} />
+<Route path="users" element={<AdminUsers />} />
+<Route path="import-export" element={<AdminImportExport />} />
+```
 
-Creates the mutable state layer that replaces direct seed.ts imports for all reference data. Persists to localStorage.
+### Navigation
 
-| # | File | Action |
-|---|---|---|
-| 1 | `src/types/index.ts` | Add `isActive` to Phase, ActivityType, InternalWorkArea, Department |
-| 2 | `src/data/seed.ts` | Add `isActive: true` to all existing phase/activity/workArea/department records. Export raw defs for initial state. |
-| 3 | `src/contexts/ReferenceDataContext.tsx` | **NEW** — Context holding departments, projects, projectDepartmentAccess, phases, activityTypes, internalWorkAreas in `useState`. Init from seed, persist to localStorage. Exposes CRUD methods + filtered getters (active-only). |
-| 4 | `src/App.tsx` | Wrap app in `ReferenceDataProvider`, add new admin routes |
-| 5 | `src/components/TopBar.tsx` | Add "Reference Data" and "Users" nav links for admin |
-| 6 | `src/components/TimeEntryForm.tsx` | Switch from direct seed imports to `useReferenceData()` context |
+TopBar already has "Reference Data" and "Users" links from Brick 1. No TopBar changes needed. The "Import/Export" page will be accessible from within the Reference Data page or directly via URL (no top-nav link yet to keep the nav clean).
 
-**Key design**: `useReferenceData()` exposes the same helper functions currently in seed.ts (`getGroupedWorkstreams`, `getPhasesForProject`, `getActivitiesForPhase`, etc.) but backed by mutable state. Entry forms become automatically driven by admin-managed data.
+### Example Entity: Departments Table
 
----
+Inside the "Workstreams" tab of AdminReferenceData, a small Departments section will render `AdminCrudTable` with:
+- Data: `departments` from `useReferenceData()`
+- Columns: Name, Active status
+- Toggle active: wired to a new `toggleDepartmentActive` method added to ReferenceDataContext
+- This proves the full create/read/toggle pattern works before building entity-specific CRUD in Bricks 3-5
 
-#### Brick 2: Workstreams CRUD (projects + department access)
+To support this, `ReferenceDataContext.tsx` gets one small addition: `setDepartments` exposed via a `toggleDepartmentActive` callback. This is a minimal addition (under 15 lines) to the existing context file — no new file needed.
 
-| # | File | Action |
-|---|---|---|
-| 1 | `src/pages/admin/AdminReferenceData.tsx` | **NEW** — Tabbed page shell (Workstreams / Phases / Work Areas tabs) |
-| 2 | `src/components/admin/WorkstreamsTable.tsx` | **NEW** — Table listing all projects with name, code, type, department access pills, isActive toggle |
-| 3 | `src/components/admin/WorkstreamDialog.tsx` | **NEW** — Add/Edit dialog: name, code, type (external/internal), owning department, default billable status, department access multi-select |
-| 4 | `src/contexts/ReferenceDataContext.tsx` | Add `addProject`, `updateProject`, `toggleProjectActive`, `setProjectDepartmentAccess` methods |
+### What Does NOT Change
 
-4 files.
+- TopBar (already has the right links)
+- Types (already have isActive on all entities)
+- Seed data (already has isActive: true)
+- TimeEntryForm (untouched)
+- Employee-facing pages (untouched)
 
----
-
-#### Brick 3: Phases + Activity Types CRUD
-
-| # | File | Action |
-|---|---|---|
-| 1 | `src/components/admin/PhasesTable.tsx` | **NEW** — Expandable table: phases as rows, click to expand shows activity types underneath. Active toggle per phase. |
-| 2 | `src/components/admin/PhaseDialog.tsx` | **NEW** — Add/Edit phase dialog |
-| 3 | `src/components/admin/ActivityTypeDialog.tsx` | **NEW** — Add/Edit activity type dialog (linked to a phase) |
-| 4 | `src/contexts/ReferenceDataContext.tsx` | Add `addPhase`, `updatePhase`, `togglePhaseActive`, `addActivityType`, `updateActivityType`, `toggleActivityTypeActive` methods |
-
-4 files.
-
----
-
-#### Brick 4: Internal Work Areas CRUD
-
-| # | File | Action |
-|---|---|---|
-| 1 | `src/components/admin/WorkAreasTable.tsx` | **NEW** — Table grouped by department showing work areas, each expandable to show its activity types. Department filter dropdown. |
-| 2 | `src/components/admin/WorkAreaDialog.tsx` | **NEW** — Add/Edit work area dialog (department selector, name) |
-| 3 | `src/contexts/ReferenceDataContext.tsx` | Add `addWorkArea`, `updateWorkArea`, `toggleWorkAreaActive` methods |
-
-3 files.
-
----
-
-#### Brick 5: Users CRUD v0
-
-| # | File | Action |
-|---|---|---|
-| 1 | `src/pages/admin/AdminUsers.tsx` | **NEW** — Table of all users (active + inactive). Columns: name, email, department, job title, appRole pill, isActive toggle. Add/Edit button. |
-| 2 | `src/components/admin/UserDialog.tsx` | **NEW** — Add/Edit user dialog: name, email, job title, department dropdown, appRole dropdown, weeklyExpectedHours, isActive toggle |
-| 3 | `src/contexts/UserContext.tsx` | Move users array into useState, add `addUser`, `updateUser`, `toggleUserActive`. Persist to localStorage. `allUsers` continues to filter active-only for non-admin consumers. |
-| 4 | `src/pages/SignIn.tsx` | No changes needed (already consumes `allUsers` from context) |
-
-3 files (UserDialog, AdminUsers, UserContext).
-
----
-
-#### Brick 6: CSV Export (entities + finance time entries)
-
-| # | File | Action |
-|---|---|---|
-| 1 | `src/lib/csv.ts` | **NEW** — Utility: `arrayToCSV(rows, columns)`, `downloadCSV(content, filename)`, `parseCSV(text)` |
-| 2 | `src/pages/admin/AdminImportExport.tsx` | **NEW** — Page with Export and Import tabs |
-| 3 | `src/components/admin/ExportPanel.tsx` | **NEW** — Export buttons for: Users, Workstreams, Phases, Activity Types, Work Areas, Department Access. Plus Finance Time Entries export with date range + department + project filters. |
-| 4 | `src/components/admin/FinanceExportFilters.tsx` | **NEW** — Filter bar for time entry export: date range picker, department multi-select, project multi-select, billable status filter |
-
-4 files.
-
----
-
-#### Brick 7: CSV Import with Dry-Run Validation
-
-| # | File | Action |
-|---|---|---|
-| 1 | `src/components/admin/ImportPanel.tsx` | **NEW** — Entity selector dropdown + file upload area. Triggers dry-run on upload. |
-| 2 | `src/components/admin/ImportPreviewDialog.tsx` | **NEW** — Shows parsed rows in a table with validation status per row (green = ok, red = error with message). "Commit" button to apply. Row count summary. |
-| 3 | `src/lib/csv-import-validators.ts` | **NEW** — Per-entity validation functions: `validateUserRow`, `validateProjectRow`, `validatePhaseRow`, etc. Checks required fields, foreign key references, uniqueness. |
-
-3 files.
-
----
-
-### D) Test Plan Per Brick
-
-**Brick 1: ReferenceDataContext + Admin Nav**
+### Test Plan
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Sign in as admin, check nav | See "Reference Data" and "Users" links |
-| 2 | Open time entry form | Workstream/phase/activity dropdowns still work identically |
-| 3 | Refresh page | All reference data persists (localStorage) |
-| 4 | Sign in as employee | No admin nav links visible |
-
-**Brick 2: Workstreams CRUD**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Navigate to /admin/reference-data | See Workstreams tab with table of all 13 projects |
-| 2 | Click "Add Workstream" | Dialog opens with all required fields |
-| 3 | Create external project, assign to 2 departments | Appears in table with department pills |
-| 4 | Toggle project inactive | Disappears from employee time entry dropdowns |
-| 5 | Edit existing project name | Name updates in table and in entry forms |
-
-**Brick 3: Phases + Activity Types CRUD**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Click Phases tab | See all external phases listed |
-| 2 | Expand a phase | See its activity types |
-| 3 | Add new activity type to "Inception" | Appears in time entry form under Inception phase |
-| 4 | Deactivate a phase | No longer selectable in entry forms |
-
-**Brick 4: Internal Work Areas CRUD**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Click Work Areas tab | See work areas grouped by department |
-| 2 | Filter by Finance department | Shows only Finance work areas |
-| 3 | Add new work area to IT department | Appears in IT internal workstream dropdown for IT users |
-| 4 | Deactivate a work area | No longer selectable |
-
-**Brick 5: Users CRUD v0**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Navigate to /admin/users | See all 26 users in table |
-| 2 | Add new user | Appears on sign-in page |
-| 3 | Change user department | Reflected in sign-in card and time entry workstream access |
-| 4 | Toggle user inactive | Disappears from sign-in page |
-| 5 | Change appRole to admin | User sees admin nav after sign-in |
-
-**Brick 6: CSV Export**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Export Users CSV | Downloads CSV with all 26 users, correct columns |
-| 2 | Export Workstreams CSV | Downloads CSV with all projects |
-| 3 | Export Finance Time Entries | Downloads CSV with date, user, project, phase, hours, billable status |
-| 4 | Apply date filter to finance export | Only entries in range are exported |
-| 5 | Re-import exported CSV | Round-trip produces identical data |
-
-**Brick 7: CSV Import**
-
-| # | Test | Expected |
-|---|---|---|
-| 1 | Upload valid Users CSV | Dry-run shows all rows green, row count matches |
-| 2 | Upload CSV with missing required field | Row shows red with error message |
-| 3 | Upload CSV with invalid department reference | Row shows red: "Unknown department" |
-| 4 | Click "Commit" after dry-run | Data merges into context, visible in admin tables |
-| 5 | Upload duplicate email | Row shows warning: "User already exists — will update" |
-
-### Summary
-
-- **7 bricks**, each 3-6 files
-- **~25 new/modified files** total across all bricks
-- **No Supabase**, no auth changes
-- **Entry forms automatically driven** by ReferenceDataContext after Brick 1
-- Recommend implementing in order: Brick 1 is the critical foundation, then 2-4 (reference data CRUD), then 5 (users), then 6-7 (import/export)
+| 1 | Sign in as admin (Ian Lorenzen), click "Reference Data" | Navigates to `/admin/reference-data`, shows tabbed page with Workstreams / Phases / Work Areas tabs |
+| 2 | Workstreams tab | Shows Departments mini-table with all departments listed, each with an active toggle |
+| 3 | Toggle a department inactive | Confirm dialog appears; on confirm, switch flips to off; persists on refresh |
+| 4 | Click "Users" in top nav | Navigates to `/admin/users`, shows placeholder page |
+| 5 | Navigate to `/admin/import-export` | Shows tabbed page with Export / Import tabs (placeholder content) |
+| 6 | Sign in as employee | "Reference Data" and "Users" nav links not visible; direct URL to `/admin/reference-data` shows "Not authorised" |
+| 7 | Refresh on `/admin/reference-data` | Page loads correctly (no 404) |
 
