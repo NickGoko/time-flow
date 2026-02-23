@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, Outlet, Link, Navigate } from "react-router-dom";
 import { UserProvider, useCurrentUser } from "@/contexts/UserContext";
+import { ReferenceDataProvider } from "@/contexts/ReferenceDataContext";
 import { TimeEntriesProvider } from "@/contexts/TimeEntriesContext";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
@@ -40,6 +41,7 @@ const App = () => (
   <QueryClientProvider client={queryClient}>
     <TooltipProvider>
       <UserProvider>
+        <ReferenceDataProvider>
         <TimeEntriesProvider>
           <Toaster />
           <Sonner />
@@ -59,6 +61,7 @@ const App = () => (
             </Routes>
           </BrowserRouter>
         </TimeEntriesProvider>
+        </ReferenceDataProvider>
       </UserProvider>
     </TooltipProvider>
   </QueryClientProvider>

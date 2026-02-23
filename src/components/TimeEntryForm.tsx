@@ -43,7 +43,8 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, getGroupedWorkstreams, getDepartmentById } from '@/data/seed';
+import { parseLocalDate } from '@/data/seed';
+import { useReferenceData } from '@/contexts/ReferenceDataContext';
 
 const LEAVE_PROJECT_ID = 'proj-leave';
 const ABSENCE_PHASE_ID = 'phase-absence';
@@ -60,6 +61,7 @@ interface TimeEntryFormProps {
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
   const entries = getOwnEntries();
   const [open, setOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);

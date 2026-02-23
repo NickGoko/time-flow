@@ -3,14 +3,14 @@ import { User, Project, Phase, ActivityType, TimeEntry, WeekStatus, BillableStat
 // ── Departments (8) ─────────────────────────────────────────────────
 
 export const departments: Department[] = [
-  { id: 'dept-consulting', name: 'Project Delivery (Impact)' },
-  { id: 'dept-operations', name: 'Operations' },
-  { id: 'dept-bd', name: 'Business Development' },
-  { id: 'dept-finance', name: 'Finance, Legal and Administration' },
-  { id: 'dept-it', name: 'IT, AI and Productivity' },
-  { id: 'dept-hr', name: 'Human Resources' },
-  { id: 'dept-comms', name: 'Communications' },
-  { id: 'dept-mel', name: 'Data, Insights and Learning (MEL)' },
+  { id: 'dept-consulting', name: 'Project Delivery (Impact)', isActive: true },
+  { id: 'dept-operations', name: 'Operations', isActive: true },
+  { id: 'dept-bd', name: 'Business Development', isActive: true },
+  { id: 'dept-finance', name: 'Finance, Legal and Administration', isActive: true },
+  { id: 'dept-it', name: 'IT, AI and Productivity', isActive: true },
+  { id: 'dept-hr', name: 'Human Resources', isActive: true },
+  { id: 'dept-comms', name: 'Communications', isActive: true },
+  { id: 'dept-mel', name: 'Data, Insights and Learning (MEL)', isActive: true },
 ];
 
 export function getDepartmentById(id: string): Department | undefined {
@@ -338,9 +338,9 @@ function buildTaxonomy() {
 
   // External phases and activities
   for (const pd of externalPhaseDefs) {
-    allPhases.push({ id: pd.id, name: pd.name });
+    allPhases.push({ id: pd.id, name: pd.name, isActive: true });
     for (const act of pd.activities) {
-      allActivities.push({ id: act.id, name: act.name, phaseId: pd.id });
+      allActivities.push({ id: act.id, name: act.name, phaseId: pd.id, isActive: true });
     }
   }
 
@@ -351,14 +351,15 @@ function buildTaxonomy() {
       const phaseId = `phase-${dept.prefix}-${wi}`;
       const iwaId = `iwa-${dept.prefix}-${wi}`;
 
-      allPhases.push({ id: phaseId, name: wa.name });
-      allWorkAreas.push({ id: iwaId, name: wa.name, departmentId: dept.deptId, phaseId });
+      allPhases.push({ id: phaseId, name: wa.name, isActive: true });
+      allWorkAreas.push({ id: iwaId, name: wa.name, departmentId: dept.deptId, phaseId, isActive: true });
 
       for (let ai = 0; ai < wa.activities.length; ai++) {
         allActivities.push({
           id: `act-${dept.prefix}-${wi}-${ai}`,
           name: wa.activities[ai],
           phaseId,
+          isActive: true,
         });
       }
     }

@@ -7,6 +7,7 @@ export type AppRole = 'admin' | 'employee';
 export interface Department {
   id: string;
   name: string;
+  isActive: boolean;
 }
 
 export type WorkstreamType = 'internal_department' | 'external_project';
@@ -43,17 +44,20 @@ export interface InternalWorkArea {
   name: string;
   departmentId: string;
   phaseId: string; // links to the Phase entry for this work area
+  isActive: boolean;
 }
 
 export interface Phase {
   id: string;
   name: string;
+  isActive: boolean;
 }
 
 export interface ActivityType {
   id: string;
   name: string;
   phaseId: string;
+  isActive: boolean;
 }
 
 export type DeliverableType = 
