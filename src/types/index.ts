@@ -19,6 +19,7 @@ export interface User {
   role: string;
   appRole: AppRole;
   weeklyExpectedHours: number;
+  isActive: boolean;
   avatarUrl?: string;
 }
 

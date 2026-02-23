@@ -17,35 +17,48 @@ export function getDepartmentById(id: string): Department | undefined {
   return departments.find(d => d.id === id);
 }
 
-// ── Demo users (18 across 8 departments) ────────────────────────────
+// ── Real team members (26) ───────────────────────────────────────────
 
 export const users: User[] = [
-  // Project Delivery (Impact) — 3 users
-  { id: 'user-1', name: 'Sarah Mitchell', email: 'sarah.mitchell@company.co.uk', departmentId: 'dept-consulting', role: 'Senior Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-2', name: 'James Chen', email: 'james.chen@company.co.uk', departmentId: 'dept-consulting', role: 'Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-4', name: 'Amara Osei', email: 'amara.osei@company.co.uk', departmentId: 'dept-consulting', role: 'Consultant', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Operations — 2 users
-  { id: 'user-3', name: 'Emily Thompson', email: 'emily.thompson@company.co.uk', departmentId: 'dept-operations', role: 'Programme Manager', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-6', name: 'Fatima Al-Hassan', email: 'fatima.alhassan@company.co.uk', departmentId: 'dept-operations', role: 'Operations Lead', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Business Development — 2 users
-  { id: 'user-7', name: 'Liam O\'Brien', email: 'liam.obrien@company.co.uk', departmentId: 'dept-bd', role: 'BD Manager', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-8', name: 'Priya Sharma', email: 'priya.sharma@company.co.uk', departmentId: 'dept-bd', role: 'BD Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Finance, Legal and Administration — 2 users
-  { id: 'user-10', name: 'Raj Patel', email: 'raj.patel@company.co.uk', departmentId: 'dept-finance', role: 'Financial Analyst', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-11', name: 'Nneka Chukwu', email: 'nneka.chukwu@company.co.uk', departmentId: 'dept-finance', role: 'Finance Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // IT, AI and Productivity — 2 users
-  { id: 'user-12', name: 'Tom Baker', email: 'tom.baker@company.co.uk', departmentId: 'dept-it', role: 'IT Manager', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-5', name: 'David Mwangi', email: 'david.mwangi@company.co.uk', departmentId: 'dept-it', role: 'IT Support Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Human Resources — 2 users
-  { id: 'user-13', name: 'Sofia Martinez', email: 'sofia.martinez@company.co.uk', departmentId: 'dept-hr', role: 'HR Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-14', name: 'Aisha Banda', email: 'aisha.banda@company.co.uk', departmentId: 'dept-hr', role: 'HR Coordinator', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Communications — 2 users
-  { id: 'user-15', name: 'Zara Ndlovu', email: 'zara.ndlovu@company.co.uk', departmentId: 'dept-comms', role: 'Communications Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-16', name: 'Marcus Odhiambo', email: 'marcus.odhiambo@company.co.uk', departmentId: 'dept-comms', role: 'Content Specialist', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  // Data, Insights and Learning (MEL) — 3 users
-  { id: 'user-17', name: 'Chioma Eze', email: 'chioma.eze@company.co.uk', departmentId: 'dept-mel', role: 'MEL Lead', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-18', name: 'Daniel Karanja', email: 'daniel.karanja@company.co.uk', departmentId: 'dept-mel', role: 'Data Analyst', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
-  { id: 'user-9', name: 'Grace Kimani', email: 'grace.kimani@company.co.uk', departmentId: 'dept-mel', role: 'M&E Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS },
+  // Operations (Admin/Leadership) — 3 admins
+  { id: 'user-ilo', name: 'Ian Lorenzen', email: 'ilo@growthafrica.com', departmentId: 'dept-operations', role: 'Executive Director & Partner', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-jkj', name: 'Johnni Kjelsgaard', email: 'jkj@growthafrica.com', departmentId: 'dept-operations', role: 'Founder & Executive Chairman', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-pju', name: 'Patricia Jumi', email: 'pju@growthafrica.com', departmentId: 'dept-operations', role: 'Managing Director', appRole: 'admin', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // Project Delivery (Impact) — 12 employees (2 inactive)
+  { id: 'user-bmu', name: 'Brian Muvea', email: 'bmu@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-das', name: 'Duncan Asila', email: 'das@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: false },
+  { id: 'user-eel', name: 'Eugene Eluerkeh', email: 'eel@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-hmu', name: 'Hilda Mugambi', email: 'hmu@growthafrica.com', departmentId: 'dept-consulting', role: 'Senior Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-isk', name: 'Ida Sarup Kjelsgaard', email: 'isk@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-jba', name: 'Jesse Baddoo', email: 'jba@growthafrica.com', departmentId: 'dept-consulting', role: 'Senior Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-lma', name: 'Linda Mathenge', email: 'lma@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-mwa', name: 'Maureen Wachira', email: 'mwa@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: false },
+  { id: 'user-man', name: 'Meselu Andargie', email: 'man@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-mot', name: 'Michael Otoo', email: 'mot@growthafrica.com', departmentId: 'dept-consulting', role: 'Senior Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-mny', name: 'Modechai Nyerere', email: 'mny@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-msu', name: 'Mohammed Sultan', email: 'msu@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-pmu', name: 'Patrick Mulumba', email: 'pmu@growthafrica.com', departmentId: 'dept-consulting', role: 'Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-rwi', name: 'Richard Wiafe', email: 'rwi@growthafrica.com', departmentId: 'dept-consulting', role: 'Senior Associate', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // Finance & Admin — 2 employees
+  { id: 'user-anm', name: 'Alex Njoroge', email: 'anm@growthafrica.com', departmentId: 'dept-finance', role: 'Finance & Admin Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-cne', name: 'Connie Nekesa', email: 'cne@growthafrica.com', departmentId: 'dept-finance', role: 'Finance & Admin Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // Communications — 4 employees
+  { id: 'user-ean', name: 'Edward Angyinaa', email: 'ean@growthafrica.com', departmentId: 'dept-comms', role: 'Communications Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-jny', name: 'Joyce Nyoro', email: 'jny@growthafrica.com', departmentId: 'dept-comms', role: 'Communications Intern', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-sga', name: 'Sheila Gacheru', email: 'sga@growthafrica.com', departmentId: 'dept-comms', role: 'Communications Lead', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+  { id: 'user-tna', name: 'Trudy Natabona', email: 'tna@growthafrica.com', departmentId: 'dept-comms', role: 'Communications Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // Business Development — 1 employee
+  { id: 'user-mmu', name: 'Michelle Murugi', email: 'mmu@growthafrica.com', departmentId: 'dept-bd', role: 'Business Development Lead', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // Productivity & IT — 1 employee
+  { id: 'user-ngo', name: 'Nicholas Goko', email: 'ngo@growthafrica.com', departmentId: 'dept-it', role: 'IT & Productivity Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
+
+  // HR — 1 employee
+  { id: 'user-wte', name: 'Winnie Teresia', email: 'wte@growthafrica.com', departmentId: 'dept-hr', role: 'HR Officer', appRole: 'employee', weeklyExpectedHours: WEEKLY_EXPECTED_HOURS, isActive: true },
 ];
 
 // ── Projects ────────────────────────────────────────────────────────
@@ -505,239 +518,11 @@ export function getEntryWithDetails(entry: TimeEntry): TimeEntryWithDetails | nu
 
 // ── Deterministic seed data generator ───────────────────────────────
 
-const currentWeekStart = getWeekStart();
+// ── Seed data (cleared — no demo entries) ──────────────────────────
 
-// Per-user project affinity (index matches position in users[])
-const userProjectMap: Record<number, string[]> = {
-  // Project Delivery (Impact) — indices 0-2 (external only)
-  0: ['proj-flagship', 'proj-ceic', 'proj-risa'],
-  1: ['proj-flagship', 'proj-jica-gbv', 'proj-risa'],
-  2: ['proj-ceic', 'proj-risa', 'proj-flagship'],
-  // Operations — indices 3-4 (external only)
-  3: ['proj-flagship', 'proj-jica-gbv', 'proj-ceic', 'proj-risa'],
-  4: ['proj-risa', 'proj-flagship', 'proj-ceic'],
-  // BD — indices 5-6 (mix of external + internal)
-  5: ['proj-orange-corners', 'proj-disrupt-for-her', 'proj-flagship', 'proj-internal-bd'],
-  6: ['proj-disrupt-for-her', 'proj-orange-corners', 'proj-ceic', 'proj-internal-bd'],
-  // Finance — indices 7-8 (internal + leave)
-  7: ['proj-internal-finance'],
-  8: ['proj-internal-finance'],
-  // IT — indices 9-10 (internal + leave)
-  9: ['proj-internal-it'],
-  10: ['proj-internal-it'],
-  // HR — indices 11-12 (internal + leave)
-  11: ['proj-internal-hr'],
-  12: ['proj-internal-hr'],
-  // Communications — indices 13-14 (internal + leave)
-  13: ['proj-internal-comms'],
-  14: ['proj-internal-comms'],
-  // MEL — indices 15-17 (internal + leave)
-  15: ['proj-internal-mel'],
-  16: ['proj-internal-mel'],
-  17: ['proj-internal-mel'],
-};
-
-// Helper to get internal work area phase+activity combos for a project
-function getInternalCombos(projId: string): Array<{ workAreaId: string; activityId: string; desc: string; deliverable: DeliverableType }> {
-  const project = projects.find(p => p.id === projId);
-  if (!project || project.type !== 'internal_department' || !project.owningDepartmentId) return [];
-
-  const deptWAs = internalWorkAreas.filter(wa => wa.departmentId === project.owningDepartmentId);
-  const combos: Array<{ workAreaId: string; activityId: string; desc: string; deliverable: DeliverableType }> = [];
-
-  for (const wa of deptWAs) {
-    const acts = activityTypes.filter(a => a.phaseId === wa.phaseId && !a.name.startsWith('Other'));
-    for (const act of acts.slice(0, 3)) { // limit to 3 per work area for seed variety
-      combos.push({
-        workAreaId: wa.phaseId,
-        activityId: act.id,
-        desc: `${wa.name} — ${act.name}`,
-        deliverable: 'other',
-      });
-    }
-  }
-  return combos;
-}
-
-// External project phase+activity combos
-const externalProjectCombos: Record<string, Array<{ phaseId: string; activityTypeId: string; desc: string; deliverable: DeliverableType }>> = {
-  'proj-flagship': [
-    { phaseId: 'phase-inception', activityTypeId: 'act-inception-meeting', desc: 'Stakeholder alignment session', deliverable: 'workshop' },
-    { phaseId: 'phase-inception', activityTypeId: 'act-inception-report', desc: 'Drafted inception report', deliverable: 'reporting' },
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-delivery', desc: 'Business model canvas workshop', deliverable: 'workshop' },
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-session', desc: 'Advisory sessions with entrepreneurs', deliverable: 'training' },
-    { phaseId: 'phase-reporting', activityTypeId: 'act-rpt-collection', desc: 'Progress tracking data entry', deliverable: 'reporting' },
-    { phaseId: 'phase-general-admin', activityTypeId: 'act-admin-team', desc: 'Team sync', deliverable: 'other' },
-  ],
-  'proj-jica-gbv': [
-    { phaseId: 'phase-recruitment', activityTypeId: 'act-recruit-outreach', desc: 'Outreach to potential cohort members', deliverable: 'other' },
-    { phaseId: 'phase-recruitment', activityTypeId: 'act-recruit-interviews', desc: 'Cohort selection interviews', deliverable: 'other' },
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-curriculum', desc: 'Workshop content preparation', deliverable: 'workshop' },
-    { phaseId: 'phase-reporting', activityTypeId: 'act-rpt-narrative', desc: 'Quarterly report compilation', deliverable: 'reporting' },
-    { phaseId: 'phase-general-admin', activityTypeId: 'act-admin-team', desc: 'Weekly planning call', deliverable: 'other' },
-  ],
-  'proj-ceic': [
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-delivery', desc: 'Financial literacy bootcamp', deliverable: 'workshop' },
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-followup', desc: 'Post-workshop follow-up calls', deliverable: 'reporting' },
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-sprint', desc: 'Sprint coaching sessions', deliverable: 'training' },
-    { phaseId: 'phase-growthlabs', activityTypeId: 'act-gl-facilitation', desc: 'GrowthLab delivery', deliverable: 'workshop' },
-    { phaseId: 'phase-reporting', activityTypeId: 'act-rpt-casestudy', desc: 'Case study development', deliverable: 'case_study' },
-  ],
-  'proj-risa': [
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-session', desc: 'One-on-one advisory', deliverable: 'training' },
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-research', desc: 'Entrepreneur research', deliverable: 'reporting' },
-    { phaseId: 'phase-master-classes', activityTypeId: 'act-mc-delivery', desc: 'Master class delivery', deliverable: 'training' },
-    { phaseId: 'phase-reporting', activityTypeId: 'act-rpt-collection', desc: 'Data collection and processing', deliverable: 'reporting' },
-  ],
-  'proj-disrupt-for-her': [
-    { phaseId: 'phase-recruitment', activityTypeId: 'act-recruit-outreach', desc: 'Community outreach for D4H', deliverable: 'event' },
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-delivery', desc: 'D4H bootcamp delivery', deliverable: 'workshop' },
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-other', desc: 'Mentorship coordination', deliverable: 'training' },
-    { phaseId: 'phase-growthlabs', activityTypeId: 'act-gl-planning', desc: 'GrowthLab planning for D4H', deliverable: 'other' },
-  ],
-  'proj-orange-corners': [
-    { phaseId: 'phase-inception', activityTypeId: 'act-inception-client', desc: 'Client alignment meeting', deliverable: 'other' },
-    { phaseId: 'phase-recruitment', activityTypeId: 'act-recruit-events', desc: 'Networking event for OC', deliverable: 'event' },
-    { phaseId: 'phase-workshops', activityTypeId: 'act-ws-curriculum', desc: 'Workshop preparation', deliverable: 'workshop' },
-    { phaseId: 'phase-entrepreneur-support', activityTypeId: 'act-es-sprint', desc: 'Sprint sessions', deliverable: 'training' },
-  ],
-  'proj-leave': [
-    { phaseId: 'phase-absence', activityTypeId: 'act-leave-day', desc: 'Leave day', deliverable: 'other' },
-    { phaseId: 'phase-absence', activityTypeId: 'act-public-holiday', desc: 'Public holiday', deliverable: 'other' },
-  ],
-};
-
-// Cache internal combos
-const internalCombosCache: Record<string, ReturnType<typeof getInternalCombos>> = {};
-function getCachedInternalCombos(projId: string) {
-  if (!internalCombosCache[projId]) {
-    internalCombosCache[projId] = getInternalCombos(projId);
-  }
-  return internalCombosCache[projId];
-}
-
-function seedVal(a: number, b: number, c: number): number {
-  return ((a * 7 + b * 13 + c * 31) % 97);
-}
 
 function generateTimeEntries(): TimeEntry[] {
-  const entries: TimeEntry[] = [];
-  let entryId = 1;
-
-  for (let weekOffset = -5; weekOffset <= 0; weekOffset++) {
-    const wsDate = parseLocalDate(currentWeekStart);
-    wsDate.setDate(wsDate.getDate() + weekOffset * 7);
-    const ws = toLocalDateString(wsDate);
-
-    for (let u = 0; u < users.length; u++) {
-      const user = users[u];
-      const sv = seedVal(u, weekOffset + 5, 0);
-
-      const isIncompleteWeek = (u === 3 && weekOffset === -2) || (u === 8 && weekOffset === -4) || (u === 13 && weekOffset === -1);
-      const isLeaveWeek = (u === 9 && weekOffset === -3) || (u === 12 && weekOffset === -1);
-
-      const userProjects = userProjectMap[u] || ['proj-flagship'];
-      const targetHours = isIncompleteWeek ? 20 + (sv % 8) : 36 + (sv % 6);
-      let remainingMinutes = targetHours * 60;
-
-      const dayEntries: number[] = [0, 1, 2, 3, 4];
-
-      if (isLeaveWeek) {
-        const leaveDay = u === 9 ? 0 : 4;
-        entries.push({
-          id: `entry-${entryId++}`,
-          userId: user.id,
-          projectId: 'proj-leave',
-          phaseId: 'phase-absence',
-          activityTypeId: 'act-leave-day',
-          taskDescription: 'Leave day',
-          deliverableType: 'other',
-          date: getWeekDate(ws, leaveDay),
-          hours: 8,
-          minutes: 0,
-          billableStatus: 'not_billable',
-          createdAt: getWeekDate(ws, leaveDay) + 'T09:00:00.000Z',
-          updatedAt: getWeekDate(ws, leaveDay) + 'T09:00:00.000Z',
-        });
-        remainingMinutes -= 480;
-        dayEntries.splice(dayEntries.indexOf(leaveDay), 1);
-      }
-
-      const numEntries = isIncompleteWeek ? 3 : 4 + (sv % 3);
-      const minutePerEntry = Math.floor(remainingMinutes / numEntries);
-
-      for (let e = 0; e < numEntries; e++) {
-        const day = dayEntries[e % dayEntries.length];
-        const projIdx = e % userProjects.length;
-        const projId = userProjects[projIdx];
-        const project = projects.find(p => p.id === projId);
-        const isInternalProject = project?.type === 'internal_department';
-
-        let mins = minutePerEntry + (seedVal(u, e, weekOffset + 5) % 4 - 2) * 15;
-        mins = Math.max(60, Math.min(mins, 480));
-        mins = Math.round(mins / 15) * 15;
-
-        const hours = Math.floor(mins / 60);
-        const minutes = mins % 60;
-
-        let billableStatus: BillableStatus = project?.defaultBillableStatus || 'billable';
-        const bv = seedVal(u, e, weekOffset + 10);
-        if (billableStatus === 'billable' && bv < 15) billableStatus = 'maybe_billable';
-        if (billableStatus === 'billable' && bv >= 15 && bv < 20) billableStatus = 'not_billable';
-
-        const entryDate = getWeekDate(ws, day);
-        const isBackdated = (entryId % 19 === 0) && weekOffset < -1;
-        const createdDate = isBackdated
-          ? getWeekDate(ws, day + 4) + 'T14:30:00.000Z'
-          : entryDate + 'T' + String(8 + (sv % 3)).padStart(2, '0') + ':00:00.000Z';
-
-        if (isInternalProject) {
-          const combos = getCachedInternalCombos(projId);
-          if (combos.length === 0) continue;
-          const combo = combos[seedVal(u, weekOffset + 5, e) % combos.length];
-
-          entries.push({
-            id: `entry-${entryId++}`,
-            userId: user.id,
-            projectId: projId,
-            workAreaId: combo.workAreaId,
-            workAreaActivityTypeId: combo.activityId,
-            taskDescription: combo.desc,
-            deliverableType: combo.deliverable,
-            date: entryDate,
-            hours,
-            minutes,
-            billableStatus,
-            createdAt: createdDate,
-            updatedAt: createdDate,
-          });
-        } else {
-          const combos = externalProjectCombos[projId] || externalProjectCombos['proj-flagship'];
-          const actIdx = seedVal(u, weekOffset + 5, e) % combos.length;
-          const act = combos[actIdx];
-
-          entries.push({
-            id: `entry-${entryId++}`,
-            userId: user.id,
-            projectId: projId,
-            phaseId: act.phaseId,
-            activityTypeId: act.activityTypeId,
-            supportDepartmentId: user.departmentId,
-            taskDescription: act.desc,
-            deliverableType: act.deliverable,
-            date: entryDate,
-            hours,
-            minutes,
-            billableStatus,
-            createdAt: createdDate,
-            updatedAt: createdDate,
-          });
-        }
-      }
-    }
-  }
-
-  return entries;
+  return [];
 }
 
 export const timeEntries: TimeEntry[] = generateTimeEntries();
@@ -745,30 +530,7 @@ export const timeEntries: TimeEntry[] = generateTimeEntries();
 // ── Week statuses (~60% submitted for past weeks) ──────────────────
 
 function generateWeekStatuses(): WeekStatus[] {
-  const statuses: WeekStatus[] = [];
-
-  for (let weekOffset = -5; weekOffset <= 0; weekOffset++) {
-    const wsDate = parseLocalDate(currentWeekStart);
-    wsDate.setDate(wsDate.getDate() + weekOffset * 7);
-    const ws = toLocalDateString(wsDate);
-
-    if (weekOffset === 0) continue;
-
-    for (let u = 0; u < users.length; u++) {
-      const submitted = seedVal(u, weekOffset + 5, 42) > 38;
-      if (submitted) {
-        statuses.push({
-          userId: users[u].id,
-          weekStartDate: ws,
-          isSubmitted: true,
-          submittedAt: getWeekDate(ws, 5) + 'T17:00:00.000Z',
-          isLocked: false,
-        });
-      }
-    }
-  }
-
-  return statuses;
+  return [];
 }
 
 export const weekStatuses: WeekStatus[] = generateWeekStatuses();
