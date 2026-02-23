@@ -27,7 +27,8 @@ import {
   toTotalMinutes,
   formatHours,
 } from '@/types';
-import { projects, getActivitiesForPhase, parseLocalDate, getPhasesForProject, getGroupedWorkstreams, getDepartmentById } from '@/data/seed';
+import { parseLocalDate } from '@/data/seed';
+import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
@@ -71,6 +72,7 @@ interface DailyGridEntryProps {
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
   const entries = getOwnEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -274,20 +276,21 @@ interface GridRowEntryProps {
   onUpdate: (rowId: string, field: keyof GridRow, value: any) => void;
   onRemove: (rowId: string) => void;
   canRemove: boolean;
-  grouped: ReturnType<typeof getGroupedWorkstreams>;
+  grouped: import('@/types').GroupedWorkstreams;
   departmentName: string;
 }
 
 function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, departmentName }: GridRowEntryProps) {
+  const { projects, getActivitiesForPhase, getPhasesForProject } = useReferenceData();
   const isLeave = row.projectId === LEAVE_PROJECT_ID;
-  const selectedProject = useMemo(() => projects.find(p => p.id === row.projectId), [row.projectId]);
+  const selectedProject = useMemo(() => projects.find(p => p.id === row.projectId), [row.projectId, projects]);
   const isInternal = selectedProject?.type === 'internal_department';
   const phaseLabel = isInternal ? 'Work area' : 'Phase';
 
   const activities = useMemo(() => {
     if (!row.phaseId) return [];
     return getActivitiesForPhase(row.phaseId);
-  }, [row.phaseId]);
+  }, [row.phaseId, getActivitiesForPhase]);
 
   const hasErrors = Object.keys(row.errors).length > 0;
 
