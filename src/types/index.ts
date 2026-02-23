@@ -202,6 +202,19 @@ export const DELIVERABLE_TYPES: DeliverableType[] = [
   'other',
 ];
 
+export interface DeliverableTypeItem {
+  id: string;
+  name: string;
+  isActive: boolean;
+}
+
+// Seed deliverable types from the static list
+export const SEED_DELIVERABLE_TYPES: DeliverableTypeItem[] = DELIVERABLE_TYPES.map(type => ({
+  id: `del-${type}`,
+  name: getDeliverableLabel(type),
+  isActive: true,
+}));
+
 export const WORKSTREAM_TYPES: WorkstreamType[] = ['external_project', 'internal_department'];
 
 export function getWorkstreamTypeLabel(type: WorkstreamType): string {

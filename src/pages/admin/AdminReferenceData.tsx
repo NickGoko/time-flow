@@ -4,6 +4,7 @@ import { Card } from '@/components/ui/card';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { WorkstreamsTable } from '@/components/admin/WorkstreamsTable';
 import { WorkAreasTable } from '@/components/admin/WorkAreasTable';
+import { DeliverablesTable } from '@/components/admin/DeliverablesTable';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import type { Department } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -27,6 +28,7 @@ export default function AdminReferenceData() {
             <TabsTrigger value="workstreams">Workstreams</TabsTrigger>
             <TabsTrigger value="phases">Phases</TabsTrigger>
             <TabsTrigger value="work-areas">Work Areas</TabsTrigger>
+            <TabsTrigger value="deliverables">Deliverables</TabsTrigger>
           </TabsList>
 
           <TabsContent value="workstreams" className="mt-6 space-y-8">
@@ -70,6 +72,10 @@ export default function AdminReferenceData() {
 
           <TabsContent value="work-areas" className="mt-6">
             <WorkAreasTable />
+          </TabsContent>
+
+          <TabsContent value="deliverables" className="mt-6">
+            <DeliverablesTable />
           </TabsContent>
         </Tabs>
       </main>
