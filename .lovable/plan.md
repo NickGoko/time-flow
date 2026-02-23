@@ -1,83 +1,83 @@
 
 
-## Brick 2: Admin Navigation + Reusable CRUD Scaffolding
+## Brick 3: Workstreams CRUD + Department Access
 
 ### Overview
 
-Create the three admin page shells (`/admin/reference-data`, `/admin/users`, `/admin/import-export`) with proper routing, plus a set of reusable CRUD building-block components. Wire one real entity (Departments) as a working example to prove the pattern end-to-end.
+Add full add/edit/deactivate support for Workstreams (projects) and their department access mappings. The existing `AdminCrudTable` component handles the table, toggle, and dialog scaffolding. The entry form already reads from `useReferenceData()`, so changes propagate automatically.
 
-### Files (5 files, within the 6-file limit)
+### Files (5 files)
 
 | # | File | Action | Description |
 |---|---|---|---|
-| 1 | `src/App.tsx` | EDIT | Add lazy routes for `/admin/reference-data`, `/admin/users`, `/admin/import-export` inside the existing AdminGuard block |
-| 2 | `src/pages/admin/AdminReferenceData.tsx` | NEW | Tabbed page shell with three tabs: Workstreams, Phases, Work Areas. Each tab renders a placeholder until entity-specific CRUD is wired in later bricks. The Workstreams tab is initially a "Coming soon" card. |
-| 3 | `src/pages/admin/AdminUsers.tsx` | NEW | Page shell with "Users" heading and placeholder content ("Coming soon — Brick 5"). Follows same layout pattern as AdminReportsOverview (TopBar + container). |
-| 4 | `src/pages/admin/AdminImportExport.tsx` | NEW | Page shell with Export / Import tabs. Placeholder content for both tabs. |
-| 5 | `src/components/admin/AdminCrudTable.tsx` | NEW | Reusable generic table component with: column definitions, active/inactive toggle, add button, edit button, search/filter input. Accepts generic `<T>` rows via props. Includes an inline `ConfirmDeactivateDialog` (AlertDialog) and an `EditDialog` wrapper (Dialog shell that accepts children as the form body). One working example is rendered inside AdminReferenceData's first tab: a **Departments** mini-table showing id, name, isActive toggle — proving the full pattern. |
+| 1 | `src/contexts/ReferenceDataContext.tsx` | EDIT | Upgrade `projects` and `access` from read-only `useState` to mutable with setters. Add 4 methods: `addProject`, `updateProject`, `toggleProjectActive`, `setProjectDepartmentAccess`. Expose them on the context type. |
+| 2 | `src/components/admin/WorkstreamsTable.tsx` | NEW | Renders `AdminCrudTable<Project>` with columns: Name, Code, Type (badge), Owning Dept (for internal), Dept Access (pill list for external). Wires toggle/edit/add callbacks. |
+| 3 | `src/components/admin/WorkstreamDialog.tsx` | NEW | Add/Edit dialog form with fields: name (Input), code (Input), type (Select: external_project / internal_department), owning department (Select, shown only when type=internal), default billable status (Select), department access (multi-select checkboxes, shown only when type=external). On save calls `addProject` or `updateProject` + `setProjectDepartmentAccess`. |
+| 4 | `src/pages/admin/AdminReferenceData.tsx` | EDIT | Replace the "Workstreams CRUD -- coming in Brick 3" placeholder card with `WorkstreamsTable`. Keep the existing Departments section above it. |
+| 5 | `src/types/index.ts` | EDIT | No structural changes needed. Minor: export a `WORKSTREAM_TYPES` constant (`['external_project', 'internal_department']`) for the dialog dropdown. |
 
-### Component Design: AdminCrudTable
+### Context Changes (ReferenceDataContext.tsx)
 
-```text
-Props<T extends { id: string; isActive: boolean }>:
-  - columns: { key: keyof T; header: string; render?: (row: T) => ReactNode }[]
-  - data: T[]
-  - onToggleActive: (id: string) => void
-  - onEdit: (row: T) => void
-  - onAdd: () => void
-  - addLabel: string           // e.g. "Add Workstream"
-  - entityLabel: string        // e.g. "workstream" (for confirm dialog text)
-  - searchPlaceholder?: string // optional filter input
-
-Built-in sub-components (not exported separately):
-  - ActiveToggle: Switch component with confirm-deactivate AlertDialog
-  - ConfirmDeactivateDialog: "Are you sure?" with entity name
-  - EditDialog: Dialog shell (open/close state managed by parent page)
-```
-
-This single file provides all the reusable CRUD primitives. Entity-specific pages (Bricks 3-5) will import `AdminCrudTable` and pass their own columns, data, and handlers.
-
-### Routing Changes (App.tsx)
-
-Add three new routes inside the existing `<Route path="/admin" element={<AdminGuard />}>` block:
+New methods added to the context interface:
 
 ```text
-<Route path="reference-data" element={<AdminReferenceData />} />
-<Route path="users" element={<AdminUsers />} />
-<Route path="import-export" element={<AdminImportExport />} />
+addProject(project: Project): void
+  - Generates ID from code (e.g. 'proj-' + code.toLowerCase())
+  - Persists to localStorage
+
+updateProject(id: string, updates: Partial<Project>): void
+  - Merges updates into existing project
+  - Persists to localStorage
+
+toggleProjectActive(id: string): void
+  - Flips isActive, persists
+
+setProjectDepartmentAccess(projectId: string, departmentIds: string[]): void
+  - Replaces all access rows for this project
+  - Persists to localStorage
 ```
 
-### Navigation
+The existing `getGroupedWorkstreams` already filters by `isActive` and access rows, so it will immediately reflect changes.
 
-TopBar already has "Reference Data" and "Users" links from Brick 1. No TopBar changes needed. The "Import/Export" page will be accessible from within the Reference Data page or directly via URL (no top-nav link yet to keep the nav clean).
+### WorkstreamsTable Columns
 
-### Example Entity: Departments Table
+| Column | Source | Render |
+|---|---|---|
+| Name | `project.name` | Plain text |
+| Code | `project.code` | Monospace badge |
+| Type | `project.type` | "External" or "Internal" badge |
+| Department | `project.owningDepartmentId` | Department name (internal only), dash for external |
+| Access | `projectDepartmentAccess` | Comma-separated department names (external only) |
 
-Inside the "Workstreams" tab of AdminReferenceData, a small Departments section will render `AdminCrudTable` with:
-- Data: `departments` from `useReferenceData()`
-- Columns: Name, Active status
-- Toggle active: wired to a new `toggleDepartmentActive` method added to ReferenceDataContext
-- This proves the full create/read/toggle pattern works before building entity-specific CRUD in Bricks 3-5
+### WorkstreamDialog Fields
 
-To support this, `ReferenceDataContext.tsx` gets one small addition: `setDepartments` exposed via a `toggleDepartmentActive` callback. This is a minimal addition (under 15 lines) to the existing context file — no new file needed.
+| Field | Type | Visibility | Required |
+|---|---|---|---|
+| Name | Text input | Always | Yes |
+| Code | Text input | Always | Yes |
+| Type | Select (External / Internal) | Always | Yes |
+| Owning Department | Select (all departments) | When type = internal_department | Yes (conditional) |
+| Default Billable Status | Select (Billable / Maybe / Not Billable) | Always | Yes |
+| Department Access | Checkbox list of departments | When type = external_project | At least 1 required |
 
 ### What Does NOT Change
 
-- TopBar (already has the right links)
-- Types (already have isActive on all entities)
-- Seed data (already has isActive: true)
-- TimeEntryForm (untouched)
-- Employee-facing pages (untouched)
+- AdminCrudTable component (reused as-is)
+- TimeEntryForm (already reads from context -- auto-updates)
+- TopBar, routing, other admin pages
+- Seed data (remains as initial state)
 
 ### Test Plan
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Sign in as admin (Ian Lorenzen), click "Reference Data" | Navigates to `/admin/reference-data`, shows tabbed page with Workstreams / Phases / Work Areas tabs |
-| 2 | Workstreams tab | Shows Departments mini-table with all departments listed, each with an active toggle |
-| 3 | Toggle a department inactive | Confirm dialog appears; on confirm, switch flips to off; persists on refresh |
-| 4 | Click "Users" in top nav | Navigates to `/admin/users`, shows placeholder page |
-| 5 | Navigate to `/admin/import-export` | Shows tabbed page with Export / Import tabs (placeholder content) |
-| 6 | Sign in as employee | "Reference Data" and "Users" nav links not visible; direct URL to `/admin/reference-data` shows "Not authorised" |
-| 7 | Refresh on `/admin/reference-data` | Page loads correctly (no 404) |
+| 1 | Navigate to `/admin/reference-data`, Workstreams tab | See table with all 13 existing projects (6 external + 1 leave + 6 internal) |
+| 2 | Click "Add Workstream", fill in: name="Test Project", code="TEST", type=External, billable=Billable, access=[Finance] | Dialog saves; new row appears in table with Finance access pill |
+| 3 | Sign in as Alex Njoroge (Finance dept), open time entry form | "Test Project" appears under External projects in workstream dropdown |
+| 4 | Sign in as Brian Muvea (Impact dept), open time entry form | "Test Project" does NOT appear (Impact not in access list) |
+| 5 | As admin, edit "Test Project", add Impact to access list | Save; sign in as Brian Muvea -- "Test Project" now visible |
+| 6 | As admin, toggle "Test Project" inactive | Confirm dialog appears; after confirm, project disappears from both admin table (greyed row) and employee dropdowns |
+| 7 | As admin, toggle it back active | Row un-greys; employees see it again |
+| 8 | Add internal workstream: type=Internal, owning dept=Finance | No dept access checkboxes shown; saves correctly; Finance users see it under Internal projects |
+| 9 | Refresh page | All changes persist (localStorage) |
 
