@@ -8,6 +8,8 @@ import {
   InternalWorkArea,
   GroupedWorkstreams,
   TimeEntry,
+  DeliverableTypeItem,
+  SEED_DELIVERABLE_TYPES,
 } from '@/types';
 import {
   departments as seedDepartments,
@@ -25,6 +27,7 @@ const LS_ACCESS = 'timetrack_project_dept_access';
 const LS_PHASES = 'timetrack_phases';
 const LS_ACTIVITY_TYPES = 'timetrack_activity_types';
 const LS_WORK_AREAS = 'timetrack_work_areas';
+const LS_DELIVERABLE_TYPES = 'timetrack_deliverable_types';
 
 function loadOrSeed<T>(key: string, seed: T[]): T[] {
   try {
@@ -58,6 +61,7 @@ interface ReferenceDataContextType {
   phases: Phase[];
   activityTypes: ActivityType[];
   internalWorkAreas: InternalWorkArea[];
+  deliverableTypes: DeliverableTypeItem[];
 
   // Filtered getters (active-only — for entry forms)
   getDepartmentById: (id: string) => Department | undefined;
@@ -75,6 +79,9 @@ interface ReferenceDataContextType {
   addWorkArea: (workArea: Omit<InternalWorkArea, 'id'>) => void;
   updateWorkArea: (id: string, updates: Partial<InternalWorkArea>) => void;
   toggleWorkAreaActive: (id: string) => void;
+  addDeliverableType: (name: string) => void;
+  updateDeliverableType: (id: string, name: string) => void;
+  toggleDeliverableTypeActive: (id: string) => void;
 }
 
 const ReferenceDataContext = createContext<ReferenceDataContextType | undefined>(undefined);
@@ -88,6 +95,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
   const [phases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
   const [activityTypes] = useState<ActivityType[]>(() => loadOrSeed(LS_ACTIVITY_TYPES, seedActivityTypes));
   const [workAreas, setWorkAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
+  const [deliverableTypes, setDeliverableTypes] = useState<DeliverableTypeItem[]>(() => loadOrSeed(LS_DELIVERABLE_TYPES, SEED_DELIVERABLE_TYPES));
 
   // Persist whenever state changes (for future CRUD — currently init-only)
   // Will be wired in Bricks 2-5 via setX + useEffect
@@ -250,6 +258,40 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const addDeliverableType = useCallback(
+    (name: string) => {
+      setDeliverableTypes(prev => {
+        const id = 'del-' + Date.now();
+        const next = [...prev, { id, name, isActive: true }];
+        persist(LS_DELIVERABLE_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateDeliverableType = useCallback(
+    (id: string, name: string) => {
+      setDeliverableTypes(prev => {
+        const next = prev.map(d => d.id === id ? { ...d, name } : d);
+        persist(LS_DELIVERABLE_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleDeliverableTypeActive = useCallback(
+    (id: string) => {
+      setDeliverableTypes(prev => {
+        const next = prev.map(d => d.id === id ? { ...d, isActive: !d.isActive } : d);
+        persist(LS_DELIVERABLE_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const value = useMemo<ReferenceDataContextType>(
     () => ({
       departments,
@@ -258,6 +300,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       phases,
       activityTypes,
       internalWorkAreas: workAreas,
+      deliverableTypes,
       getDepartmentById,
       getActivitiesForPhase,
       getPhasesForProject,
@@ -271,8 +314,11 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       addWorkArea,
       updateWorkArea,
       toggleWorkAreaActive,
+      addDeliverableType,
+      updateDeliverableType,
+      toggleDeliverableTypeActive,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive],
+    [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive, addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive],
   );
 
   return (
