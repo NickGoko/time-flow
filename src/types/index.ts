@@ -202,5 +202,11 @@ export const DELIVERABLE_TYPES: DeliverableType[] = [
   'other',
 ];
 
+export const WORKSTREAM_TYPES: WorkstreamType[] = ['external_project', 'internal_department'];
+
+export function getWorkstreamTypeLabel(type: WorkstreamType): string {
+  return type === 'external_project' ? 'External' : 'Internal';
+}
+
 export const HOUR_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;

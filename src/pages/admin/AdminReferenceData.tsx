@@ -2,6 +2,7 @@ import { TopBar } from '@/components/TopBar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
+import { WorkstreamsTable } from '@/components/admin/WorkstreamsTable';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import type { Department } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -54,9 +55,10 @@ export default function AdminReferenceData() {
               />
             </section>
 
-            <Card className="p-6 text-center text-muted-foreground">
-              <p className="text-sm">Workstreams CRUD — coming in Brick 3</p>
-            </Card>
+            <section>
+              <h2 className="text-lg font-medium mb-4">Workstreams</h2>
+              <WorkstreamsTable />
+            </section>
           </TabsContent>
 
           <TabsContent value="phases" className="mt-6">
