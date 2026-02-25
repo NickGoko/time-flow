@@ -13,8 +13,8 @@ export function UserSelector() {
   const getInitials = (name: string) =>
     name.split(' ').map(n => n[0]).join('').toUpperCase();
 
-  const handleSignOut = () => {
-    signOut();
+  const handleSignOut = async () => {
+    await signOut();
     navigate('/sign-in');
   };
 
