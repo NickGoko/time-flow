@@ -72,6 +72,12 @@ interface ReferenceDataContextType {
 
   // CRUD methods
   toggleDepartmentActive: (id: string) => void;
+  addPhase: (name: string) => void;
+  updatePhase: (id: string, name: string) => void;
+  togglePhaseActive: (id: string) => void;
+  addActivityType: (name: string, phaseId: string) => void;
+  updateActivityType: (id: string, updates: { name?: string; phaseId?: string }) => void;
+  toggleActivityTypeActive: (id: string) => void;
   addProject: (project: Omit<Project, 'id'> & { id?: string }) => void;
   updateProject: (id: string, updates: Partial<Project>) => void;
   toggleProjectActive: (id: string) => void;
@@ -92,8 +98,8 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
   const [departments, setDepartments] = useState<Department[]>(() => loadOrSeed(LS_DEPARTMENTS, seedDepartments));
   const [projects, setProjects] = useState<Project[]>(() => loadOrSeed(LS_PROJECTS, seedProjects));
   const [access, setAccess] = useState<ProjectDepartmentAccess[]>(() => loadOrSeed(LS_ACCESS, seedAccess));
-  const [phases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
-  const [activityTypes] = useState<ActivityType[]>(() => loadOrSeed(LS_ACTIVITY_TYPES, seedActivityTypes));
+  const [phases, setPhases] = useState<Phase[]>(() => loadOrSeed(LS_PHASES, seedPhases));
+  const [activityTypes, setActivityTypes] = useState<ActivityType[]>(() => loadOrSeed(LS_ACTIVITY_TYPES, seedActivityTypes));
   const [workAreas, setWorkAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
   const [deliverableTypes, setDeliverableTypes] = useState<DeliverableTypeItem[]>(() => loadOrSeed(LS_DELIVERABLE_TYPES, SEED_DELIVERABLE_TYPES));
 
@@ -258,6 +264,74 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const addPhase = useCallback(
+    (name: string) => {
+      setPhases(prev => {
+        const id = 'phase-' + Date.now();
+        const next = [...prev, { id, name, isActive: true }];
+        persist(LS_PHASES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updatePhase = useCallback(
+    (id: string, name: string) => {
+      setPhases(prev => {
+        const next = prev.map(p => p.id === id ? { ...p, name } : p);
+        persist(LS_PHASES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const togglePhaseActive = useCallback(
+    (id: string) => {
+      setPhases(prev => {
+        const next = prev.map(p => p.id === id ? { ...p, isActive: !p.isActive } : p);
+        persist(LS_PHASES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addActivityType = useCallback(
+    (name: string, phaseId: string) => {
+      setActivityTypes(prev => {
+        const id = 'act-' + Date.now();
+        const next = [...prev, { id, name, phaseId, isActive: true }];
+        persist(LS_ACTIVITY_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateActivityType = useCallback(
+    (id: string, updates: { name?: string; phaseId?: string }) => {
+      setActivityTypes(prev => {
+        const next = prev.map(a => a.id === id ? { ...a, ...updates } : a);
+        persist(LS_ACTIVITY_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const toggleActivityTypeActive = useCallback(
+    (id: string) => {
+      setActivityTypes(prev => {
+        const next = prev.map(a => a.id === id ? { ...a, isActive: !a.isActive } : a);
+        persist(LS_ACTIVITY_TYPES, next);
+        return next;
+      });
+    },
+    [],
+  );
+
   const addDeliverableType = useCallback(
     (name: string) => {
       setDeliverableTypes(prev => {
@@ -307,6 +381,12 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       getGroupedWorkstreams,
       getProjectById,
       toggleDepartmentActive,
+      addPhase,
+      updatePhase,
+      togglePhaseActive,
+      addActivityType,
+      updateActivityType,
+      toggleActivityTypeActive,
       addProject,
       updateProject,
       toggleProjectActive,
@@ -318,7 +398,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       updateDeliverableType,
       toggleDeliverableTypeActive,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive, addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive],
+    [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addPhase, updatePhase, togglePhaseActive, addActivityType, updateActivityType, toggleActivityTypeActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive, addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive],
   );
 
   return (
