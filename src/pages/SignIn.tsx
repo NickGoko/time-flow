@@ -7,7 +7,8 @@ import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useCurrentUser } from '@/contexts/UserContext';
-import { Navigate } from 'react-router-dom';
+import { Navigate, Link } from 'react-router-dom';
+import { DEV_MODE } from '@/lib/devMode';
 
 export default function SignIn() {
   const { currentUser, isLoading } = useCurrentUser();
@@ -118,7 +119,13 @@ export default function SignIn() {
             </TabsContent>
           </Tabs>
         </CardContent>
-      </Card>
+    </Card>
+
+      {DEV_MODE && (
+        <Link to="/dev/access" className="mt-4 text-sm text-muted-foreground underline hover:text-foreground transition-colors">
+          Dev Mode: Select demo user →
+        </Link>
+      )}
     </div>
   );
 }
