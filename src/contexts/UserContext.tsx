@@ -1,33 +1,17 @@
-import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { User, AppRole } from '@/types';
-import { users as seedUsers } from '@/data/seed';
-
-const STORAGE_KEY = 'timetrack_current_user_id';
-const LS_USERS = 'timetrack_users';
-
-function loadOrSeed<T>(key: string, seed: T[]): T[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (raw) {
-      const parsed = JSON.parse(raw) as T[];
-      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-    }
-  } catch { /* fall through */ }
-  return seed;
-}
-
-function persist<T>(key: string, data: T[]) {
-  try { localStorage.setItem(key, JSON.stringify(data)); } catch { /* noop */ }
-}
+import { supabase } from '@/integrations/supabase/client';
+import type { Session } from '@supabase/supabase-js';
 
 interface UserContextType {
   currentUser: User | null;
   setCurrentUser: (user: User) => void;
-  signOut: () => void;
+  signOut: () => Promise<void>;
   allUsers: User[];
   allUsersList: User[];
   appRole: AppRole | null;
   isAdmin: boolean;
+  isLoading: boolean;
   addUser: (data: Omit<User, 'id'>) => void;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => void;
   toggleUserActive: (id: string) => void;
@@ -35,64 +19,114 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-export function UserProvider({ children }: { children: ReactNode }) {
-  const [allUsersList, setAllUsersList] = useState<User[]>(() => loadOrSeed(LS_USERS, seedUsers));
+async function fetchUserProfile(userId: string): Promise<User | null> {
+  const [profileRes, roleRes] = await Promise.all([
+    supabase.from('profiles').select('*').eq('id', userId).single(),
+    supabase.from('user_roles').select('role').eq('user_id', userId).single(),
+  ]);
 
-  const [currentUser, setCurrentUserState] = useState<User | null>(() => {
-    try {
-      const id = localStorage.getItem(STORAGE_KEY);
-      if (!id) return null;
-      const list = loadOrSeed(LS_USERS, seedUsers);
-      return list.find(u => u.id === id) ?? null;
-    } catch { return null; }
-  });
+  if (profileRes.error || !profileRes.data) return null;
+
+  const profile = profileRes.data;
+  const appRole: AppRole = (roleRes.data?.role as AppRole) ?? 'employee';
+
+  return {
+    id: profile.id,
+    name: profile.name,
+    email: profile.email,
+    departmentId: profile.department_id ?? '',
+    role: profile.role,
+    appRole,
+    weeklyExpectedHours: profile.weekly_expected_hours,
+    isActive: profile.is_active,
+    avatarUrl: profile.avatar_url ?? undefined,
+  };
+}
+
+export function UserProvider({ children }: { children: ReactNode }) {
+  const [currentUser, setCurrentUserState] = useState<User | null>(null);
+  const [allUsersList, setAllUsersList] = useState<User[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Fetch all users (for admin pages)
+  const refreshAllUsers = useCallback(async () => {
+    const { data: profiles } = await supabase.from('profiles').select('*');
+    const { data: roles } = await supabase.from('user_roles').select('user_id, role');
+
+    if (!profiles) return;
+
+    const roleMap = new Map<string, AppRole>();
+    roles?.forEach(r => roleMap.set(r.user_id, r.role as AppRole));
+
+    const users: User[] = profiles.map(p => ({
+      id: p.id,
+      name: p.name,
+      email: p.email,
+      departmentId: p.department_id ?? '',
+      role: p.role,
+      appRole: roleMap.get(p.id) ?? 'employee',
+      weeklyExpectedHours: p.weekly_expected_hours,
+      isActive: p.is_active,
+      avatarUrl: p.avatar_url ?? undefined,
+    }));
+
+    setAllUsersList(users);
+  }, []);
+
+  // Handle session changes
+  const handleSession = useCallback(async (session: Session | null) => {
+    if (!session?.user) {
+      setCurrentUserState(null);
+      setIsLoading(false);
+      return;
+    }
+
+    const user = await fetchUserProfile(session.user.id);
+    setCurrentUserState(user);
+    setIsLoading(false);
+
+    // Fetch all users once authenticated (admin needs this)
+    if (user) {
+      refreshAllUsers();
+    }
+  }, [refreshAllUsers]);
+
+  useEffect(() => {
+    // Set up auth listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        await handleSession(session);
+      }
+    );
+
+    // Then check existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      handleSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, [handleSession]);
 
   const setCurrentUser = useCallback((user: User) => {
-    localStorage.setItem(STORAGE_KEY, user.id);
     setCurrentUserState(user);
   }, []);
 
-  const signOut = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
+  const signOut = useCallback(async () => {
+    await supabase.auth.signOut();
     setCurrentUserState(null);
   }, []);
 
-  const addUser = useCallback((data: Omit<User, 'id'>) => {
-    setAllUsersList(prev => {
-      const id = 'user-' + Date.now();
-      const next = [...prev, { ...data, id } as User];
-      persist(LS_USERS, next);
-      return next;
-    });
+  // These are no-ops until Brick 6 (admin edge functions)
+  const addUser = useCallback((_data: Omit<User, 'id'>) => {
+    console.warn('addUser: not implemented yet (Brick 6)');
   }, []);
 
-  const updateUser = useCallback((id: string, updates: Partial<Omit<User, 'id'>>) => {
-    setAllUsersList(prev => {
-      const next = prev.map(u => u.id === id ? { ...u, ...updates } : u);
-      persist(LS_USERS, next);
-      return next;
-    });
-    // If updating the current user, sync their state
-    setCurrentUserState(prev => {
-      if (prev && prev.id === id) return { ...prev, ...updates };
-      return prev;
-    });
+  const updateUser = useCallback((_id: string, _updates: Partial<Omit<User, 'id'>>) => {
+    console.warn('updateUser: not implemented yet (Brick 6)');
   }, []);
 
-  const toggleUserActive = useCallback((id: string) => {
-    setAllUsersList(prev => {
-      const next = prev.map(u => u.id === id ? { ...u, isActive: !u.isActive } : u);
-      persist(LS_USERS, next);
-      return next;
-    });
-    // If deactivating the current user, sign them out
-    setCurrentUserState(prev => {
-      if (prev && prev.id === id && prev.isActive) {
-        localStorage.removeItem(STORAGE_KEY);
-        return null;
-      }
-      return prev;
-    });
+  const toggleUserActive = useCallback((_id: string) => {
+    console.warn('toggleUserActive: not implemented yet (Brick 6)');
   }, []);
 
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
@@ -105,10 +139,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
     allUsersList,
     appRole: currentUser?.appRole ?? null,
     isAdmin: currentUser?.appRole === 'admin',
+    isLoading,
     addUser,
     updateUser,
     toggleUserActive,
-  }), [currentUser, setCurrentUser, signOut, allUsers, allUsersList, addUser, updateUser, toggleUserActive]);
+  }), [currentUser, setCurrentUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive]);
 
   return (
     <UserContext.Provider value={value}>

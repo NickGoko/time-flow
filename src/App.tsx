@@ -19,7 +19,14 @@ import SignIn from "./pages/SignIn";
 const queryClient = new QueryClient();
 
 function SessionGate() {
-  const { currentUser } = useCurrentUser();
+  const { currentUser, isLoading } = useCurrentUser();
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      </div>
+    );
+  }
   if (!currentUser) return <Navigate to="/sign-in" replace />;
   return <Outlet />;
 }
