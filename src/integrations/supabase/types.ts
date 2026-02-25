@@ -14,7 +14,196 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      activity_types: {
+        Row: {
+          id: string
+          is_active: boolean
+          name: string
+          phase_id: string
+        }
+        Insert: {
+          id: string
+          is_active?: boolean
+          name: string
+          phase_id: string
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          name?: string
+          phase_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_types_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      deliverable_types: {
+        Row: {
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          id: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      departments: {
+        Row: {
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          id: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      internal_work_areas: {
+        Row: {
+          department_id: string
+          id: string
+          is_active: boolean
+          name: string
+          phase_id: string
+        }
+        Insert: {
+          department_id: string
+          id: string
+          is_active?: boolean
+          name: string
+          phase_id: string
+        }
+        Update: {
+          department_id?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          phase_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "internal_work_areas_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "internal_work_areas_phase_id_fkey"
+            columns: ["phase_id"]
+            isOneToOne: false
+            referencedRelation: "phases"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phases: {
+        Row: {
+          id: string
+          is_active: boolean
+          name: string
+        }
+        Insert: {
+          id: string
+          is_active?: boolean
+          name: string
+        }
+        Update: {
+          id?: string
+          is_active?: boolean
+          name?: string
+        }
+        Relationships: []
+      }
+      project_department_access: {
+        Row: {
+          department_id: string
+          workstream_id: string
+        }
+        Insert: {
+          department_id: string
+          workstream_id: string
+        }
+        Update: {
+          department_id?: string
+          workstream_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_department_access_department_id_fkey"
+            columns: ["department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_department_access_workstream_id_fkey"
+            columns: ["workstream_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          code: string
+          default_billable_status: string
+          id: string
+          is_active: boolean
+          name: string
+          owning_department_id: string | null
+          type: string
+        }
+        Insert: {
+          code: string
+          default_billable_status?: string
+          id: string
+          is_active?: boolean
+          name: string
+          owning_department_id?: string | null
+          type?: string
+        }
+        Update: {
+          code?: string
+          default_billable_status?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          owning_department_id?: string | null
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "projects_owning_department_id_fkey"
+            columns: ["owning_department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

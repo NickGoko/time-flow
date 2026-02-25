@@ -1,4 +1,5 @@
-import { createContext, useContext, useState, useCallback, useMemo, ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, useEffect, useMemo, ReactNode } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Department,
   Project,
@@ -105,8 +106,63 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
   const [workAreas, setWorkAreas] = useState<InternalWorkArea[]>(() => loadOrSeed(LS_WORK_AREAS, seedWorkAreas));
   const [deliverableTypes, setDeliverableTypes] = useState<DeliverableTypeItem[]>(() => loadOrSeed(LS_DELIVERABLE_TYPES, SEED_DELIVERABLE_TYPES));
 
-  // Persist whenever state changes (for future CRUD — currently init-only)
-  // Will be wired in Bricks 2-5 via setX + useEffect
+  // ── Fetch reference data from Supabase on mount ──────────────────
+  useEffect(() => {
+    async function fetchAll() {
+      const [deptRes, projRes, accessRes, phaseRes, actRes, waRes, delRes] = await Promise.all([
+        supabase.from('departments').select('*'),
+        supabase.from('projects').select('*'),
+        supabase.from('project_department_access').select('*'),
+        supabase.from('phases').select('*'),
+        supabase.from('activity_types').select('*'),
+        supabase.from('internal_work_areas').select('*'),
+        supabase.from('deliverable_types').select('*'),
+      ]);
+
+      if (deptRes.data?.length) {
+        const mapped = deptRes.data.map((d: any) => ({ id: d.id, name: d.name, isActive: d.is_active }));
+        setDepartments(mapped);
+        persist(LS_DEPARTMENTS, mapped);
+      }
+      if (projRes.data?.length) {
+        const mapped = projRes.data.map((p: any) => ({
+          id: p.id, name: p.name, code: p.code, isActive: p.is_active,
+          defaultBillableStatus: p.default_billable_status, type: p.type,
+          owningDepartmentId: p.owning_department_id,
+        }));
+        setProjects(mapped);
+        persist(LS_PROJECTS, mapped);
+      }
+      if (accessRes.data?.length) {
+        const mapped = accessRes.data.map((a: any) => ({ workstreamId: a.workstream_id, departmentId: a.department_id }));
+        setAccess(mapped);
+        persist(LS_ACCESS, mapped);
+      }
+      if (phaseRes.data?.length) {
+        const mapped = phaseRes.data.map((p: any) => ({ id: p.id, name: p.name, isActive: p.is_active }));
+        setPhases(mapped);
+        persist(LS_PHASES, mapped);
+      }
+      if (actRes.data?.length) {
+        const mapped = actRes.data.map((a: any) => ({ id: a.id, name: a.name, phaseId: a.phase_id, isActive: a.is_active }));
+        setActivityTypes(mapped);
+        persist(LS_ACTIVITY_TYPES, mapped);
+      }
+      if (waRes.data?.length) {
+        const mapped = waRes.data.map((w: any) => ({
+          id: w.id, name: w.name, departmentId: w.department_id, phaseId: w.phase_id, isActive: w.is_active,
+        }));
+        setWorkAreas(mapped);
+        persist(LS_WORK_AREAS, mapped);
+      }
+      if (delRes.data?.length) {
+        const mapped = delRes.data.map((d: any) => ({ id: d.id, name: d.name, isActive: d.is_active }));
+        setDeliverableTypes(mapped);
+        persist(LS_DELIVERABLE_TYPES, mapped);
+      }
+    }
+    fetchAll();
+  }, []);
 
   const getDepartmentById = useCallback(
     (id: string) => departments.find(d => d.id === id),
