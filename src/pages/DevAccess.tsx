@@ -6,6 +6,8 @@ import { useCurrentUser } from '@/contexts/UserContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Clock, AlertTriangle } from 'lucide-react';
 import type { User, AppRole } from '@/types';
 
@@ -26,6 +28,7 @@ export default function DevAccess() {
   const [profiles, setProfiles] = useState<ProfileRow[]>([]);
   const [roles, setRoles] = useState<Map<string, AppRole>>(new Map());
   const [loading, setLoading] = useState(true);
+  const [manualEmail, setManualEmail] = useState('');
 
   useEffect(() => {
     if (!DEV_MODE) return;
@@ -46,7 +49,7 @@ export default function DevAccess() {
   if (!DEV_MODE) return <Navigate to="/sign-in" replace />;
   if (currentUser) return <Navigate to={currentUser.appRole === 'admin' ? '/admin/reports/overview' : '/'} replace />;
 
-  const handleSelect = (p: ProfileRow) => {
+  const selectUser = (p: ProfileRow) => {
     const user: User = {
       id: p.id,
       name: p.name,
@@ -61,6 +64,24 @@ export default function DevAccess() {
     setDevUser(user);
     navigate(user.appRole === 'admin' ? '/admin/reports/overview' : '/');
   };
+
+  const handleManualEntry = () => {
+    // Create a synthetic admin user — no DB query needed (RLS blocks anon reads)
+    const syntheticUser: User = {
+      id: 'dev-mode-user',
+      name: manualEmail.split('@')[0],
+      email: manualEmail,
+      departmentId: '',
+      role: 'Developer',
+      appRole: 'admin',
+      weeklyExpectedHours: 40,
+      isActive: true,
+    };
+    setDevUser(syntheticUser);
+    navigate('/admin/reports/overview');
+  };
+
+  const activeProfiles = profiles.filter(p => p.is_active);
 
   return (
     <div className="flex min-h-screen flex-col items-center justify-center bg-background px-4">
@@ -82,23 +103,19 @@ export default function DevAccess() {
             Auth is bypassed. Writes may fail (no real session). Choose a user to proceed.
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="flex flex-col gap-4">
           {loading ? (
             <div className="flex justify-center py-8">
               <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
             </div>
-          ) : profiles.length === 0 ? (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No profiles found. RLS may be blocking unauthenticated reads.
-            </p>
-          ) : (
+          ) : activeProfiles.length > 0 ? (
             <div className="flex flex-col gap-2">
-              {profiles.filter(p => p.is_active).map(p => (
+              {activeProfiles.map(p => (
                 <Button
                   key={p.id}
                   variant="outline"
                   className="justify-between h-auto py-3"
-                  onClick={() => handleSelect(p)}
+                  onClick={() => selectUser(p)}
                 >
                   <div className="flex flex-col items-start text-left">
                     <span className="font-medium">{p.name || p.email}</span>
@@ -110,7 +127,26 @@ export default function DevAccess() {
                 </Button>
               ))}
             </div>
-          )}
+          ) : null}
+
+          {/* Manual email fallback — always shown, creates synthetic admin user */}
+          <div className="border-t pt-4 flex flex-col gap-2">
+            <Label htmlFor="dev-email" className="text-sm font-medium">
+              {activeProfiles.length > 0 ? 'Or enter email manually (admin)' : 'Enter any email to proceed as admin'}
+            </Label>
+            <div className="flex gap-2">
+              <Input
+                id="dev-email"
+                type="email"
+                placeholder="you@example.com"
+                value={manualEmail}
+                onChange={e => setManualEmail(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && manualEmail && handleManualEntry()}
+              />
+              <Button onClick={handleManualEntry} disabled={!manualEmail}>Go</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Creates a synthetic admin session (read-only, no real auth).</p>
+          </div>
         </CardContent>
       </Card>
     </div>
