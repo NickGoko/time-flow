@@ -33,12 +33,11 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const token = authHeader.replace('Bearer ', '');
-    const { data: claimsData, error: claimsError } = await callerClient.auth.getClaims(token);
-    if (claimsError || !claimsData?.claims) {
+    const { data: { user: callerUser }, error: userError } = await callerClient.auth.getUser();
+    if (userError || !callerUser) {
       return jsonResponse({ error: 'Unauthorized' }, 401);
     }
-    const callerId = claimsData.claims.sub as string;
+    const callerId = callerUser.id;
 
     // Check admin role
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
