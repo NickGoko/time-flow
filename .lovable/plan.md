@@ -1,83 +1,136 @@
 
 
-## Brick 1: Reference Data Schema + Read from Database
+## Brick 2: Auth-Related Tables (profiles, user_roles, time_entries, week_statuses)
 
-### A) Current State Summary
+### Objective
 
-- **Identity**: Demo user picker stored in `localStorage`. No Supabase Auth.
-- **Data**: All data is in-memory (seeded from `src/data/seed.ts`) + `localStorage` persistence for reference data. Zero Supabase tables exist. The `types.ts` confirms an empty schema.
-- **Supabase client**: Already exists at `src/integrations/supabase/client.ts` using `VITE_SUPABASE_URL` and `VITE_SUPABASE_PUBLISHABLE_KEY`. Ready to use.
-- **Admin gating**: Client-side only (`AdminGuard` checks `currentUser.appRole`).
+Create the four user/auth-linked tables in Supabase with RLS policies. This is schema-only -- no application code changes. The tables will be ready for Brick 3 (Auth UI + session context) and Brick 5 (time entries migration).
 
-### B) Recommended First Dataset: Reference Data (not time_entries)
+### Migration Scope (1 file)
 
-`time_entries` and `users` both require `auth.uid()` for secure RLS. Since auth is not wired yet, starting with either would require temporary workarounds or no security.
+A single SQL migration that creates:
 
-**Reference data tables** (departments, phases, activity_types, projects, etc.) are the safest first target:
-- No user-ownership semantics -- they are shared lookup tables
-- Simple RLS: anon/authenticated can SELECT; writes stay client-side for now
-- Already have full CRUD in `ReferenceDataContext` -- easy to swap reads
+**1. `app_role` enum and `user_roles` table**
 
-### C) Required Supabase Tables (first migration)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid PK default gen_random_uuid()` | |
+| `user_id` | `uuid FK auth.users(id) ON DELETE CASCADE NOT NULL` | |
+| `role` | `app_role NOT NULL` | enum: `admin`, `employee` |
+| | `UNIQUE(user_id, role)` | |
 
-| Table | Columns |
-|---|---|
-| `departments` | `id text PK`, `name text`, `is_active bool default true` |
-| `projects` | `id text PK`, `name text`, `code text`, `is_active bool`, `default_billable_status text`, `type text`, `owning_department_id text FK` |
-| `project_department_access` | `workstream_id text FK`, `department_id text FK`, composite PK |
-| `phases` | `id text PK`, `name text`, `is_active bool default true` |
-| `activity_types` | `id text PK`, `name text`, `phase_id text FK`, `is_active bool default true` |
-| `internal_work_areas` | `id text PK`, `name text`, `department_id text FK`, `phase_id text FK`, `is_active bool default true` |
-| `deliverable_types` | `id text PK`, `name text`, `is_active bool default true` |
+**2. `has_role()` security definer function**
 
-All tables use `text` PKs matching existing seed IDs (e.g. `dept-finance`, `phase-inception`). Migration includes seed `INSERT` statements.
+```text
+public.has_role(_user_id uuid, _role app_role) returns boolean
+  -- SECURITY DEFINER, stable, search_path = public
+  -- checks user_roles table without triggering RLS recursion
+```
 
-RLS: Enable on all tables. Single policy per table: `SELECT` for `anon` and `authenticated`. No write policies yet (writes remain client-side via localStorage until auth is wired).
+**3. `profiles` table**
 
-### D) Proposed File List (4 files, well under limit)
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid PK FK auth.users(id) ON DELETE CASCADE` | |
+| `name` | `text NOT NULL` | |
+| `email` | `text NOT NULL` | |
+| `department_id` | `text FK departments(id)` | nullable (unassigned) |
+| `role` | `text NOT NULL DEFAULT ''` | job title, not auth role |
+| `weekly_expected_hours` | `integer NOT NULL DEFAULT 40` | |
+| `is_active` | `boolean NOT NULL DEFAULT true` | |
+| `avatar_url` | `text` | nullable |
+| `created_at` | `timestamptz DEFAULT now()` | |
 
-| # | File | Action | Purpose |
-|---|---|---|---|
-| 1 | `supabase/migrations/001_reference_tables.sql` | NEW (migration tool) | DDL + RLS + seed INSERTs for all 7 reference tables |
-| 2 | `src/contexts/ReferenceDataContext.tsx` | EDIT | Replace `loadOrSeed()` init with Supabase `SELECT` queries. Keep `localStorage` writes as-is (fallback). Add loading state. |
-| 3 | `src/types/index.ts` | NO CHANGE | Existing types match DB columns; no changes needed |
-| 4 | `src/data/seed.ts` | NO CHANGE | Kept as fallback for offline/loading states |
+RLS policies:
+- SELECT: all authenticated users can read all profiles (needed for name display)
+- UPDATE: users can update only their own profile (`auth.uid() = id`)
+- INSERT: none (created by trigger)
+- DELETE: none
 
-### E) Step-by-Step Plan
+**4. `handle_new_user()` trigger**
 
-**Step 1: Create migration (1 file)**
-- Use the migration tool to create all 7 tables with seed data
-- Enable RLS with read-only policies for `anon` role
-- No write policies -- mutations stay client-side for now
+On `auth.users` INSERT, auto-creates a `profiles` row with `id`, `email`, and defaults. Also inserts an `employee` role into `user_roles`.
 
-**Step 2: Update ReferenceDataContext (1 file)**
-- Add a `useEffect` that fetches each table from Supabase on mount
-- On success, replace React state with DB data (overriding localStorage seed)
-- On failure, fall back to existing `loadOrSeed()` behavior (graceful degradation)
-- All existing CRUD callbacks remain unchanged (still write to localStorage)
-- Add an `isLoading` flag to context (optional, for future use)
+**5. `time_entries` table**
 
-**What does NOT change:**
-- `seed.ts` (retained as fallback)
-- `types/index.ts` (types already match)
-- `UserContext.tsx`, `TimeEntriesContext.tsx` (untouched)
-- All UI components (they consume context, not Supabase directly)
-- Routing, auth, admin guards
+| Column | Type | Notes |
+|---|---|---|
+| `id` | `uuid PK default gen_random_uuid()` | |
+| `user_id` | `uuid FK auth.users(id) ON DELETE CASCADE NOT NULL` | |
+| `project_id` | `text FK projects(id) NOT NULL` | |
+| `phase_id` | `text FK phases(id)` | nullable |
+| `activity_type_id` | `text FK activity_types(id)` | nullable |
+| `work_area_id` | `text FK internal_work_areas(id)` | nullable |
+| `work_area_activity_type_id` | `text FK activity_types(id)` | nullable |
+| `support_department_id` | `text FK departments(id)` | nullable |
+| `task_description` | `text NOT NULL` | |
+| `deliverable_type` | `text NOT NULL` | |
+| `deliverable_description` | `text` | nullable |
+| `date` | `date NOT NULL` | |
+| `hours` | `integer NOT NULL DEFAULT 0` | |
+| `minutes` | `integer NOT NULL DEFAULT 0` | |
+| `billable_status` | `text NOT NULL DEFAULT 'not_billable'` | |
+| `comments` | `text` | nullable |
+| `created_at` | `timestamptz DEFAULT now()` | |
+| `updated_at` | `timestamptz DEFAULT now()` | |
 
-### F) Test Script
+RLS policies:
+- SELECT: own rows (`auth.uid() = user_id`) OR admin (`has_role(auth.uid(), 'admin')`)
+- INSERT: only own rows (`auth.uid() = user_id`)
+- UPDATE: only own rows (`auth.uid() = user_id`)
+- DELETE: only own rows (`auth.uid() = user_id`)
+
+**6. `week_statuses` table**
+
+| Column | Type | Notes |
+|---|---|---|
+| `user_id` | `uuid FK auth.users(id) ON DELETE CASCADE NOT NULL` | |
+| `week_start_date` | `date NOT NULL` | |
+| `is_submitted` | `boolean NOT NULL DEFAULT false` | |
+| `submitted_at` | `timestamptz` | nullable |
+| `is_locked` | `boolean NOT NULL DEFAULT false` | |
+| `locked_at` | `timestamptz` | nullable |
+| | `PRIMARY KEY (user_id, week_start_date)` | |
+
+RLS policies:
+- SELECT: own rows OR admin
+- INSERT: own rows only
+- UPDATE: own rows only (admin can also update for locking)
+- DELETE: none
+
+### File Limit
+
+1 migration file. Zero application code changes.
+
+### What Does NOT Change
+
+- `UserContext.tsx`, `TimeEntriesContext.tsx` (untouched until Bricks 3 and 5)
+- `ReferenceDataContext.tsx` (already wired to DB in Brick 1)
+- All UI components, routing, seed data
+- Existing 7 reference data tables
+
+### Key Design Decisions
+
+1. **`user_id` is `uuid`** -- references `auth.users(id)`. Current string IDs (`user-ilo`) will be retired when auth is wired in Brick 3.
+2. **`project_id` and other reference FKs remain `text`** -- matching the Brick 1 reference tables which use text PKs.
+3. **No seed data for time_entries or week_statuses** -- these will be populated by the app after auth is wired.
+4. **Profiles trigger** creates a minimal row; admin will later update `name`, `department_id`, etc. via the admin user management flow (Brick 6).
+5. **`app_role` enum** uses only `admin` and `employee` to match the existing `AppRole` type.
+
+### Risks / Edge Cases
+
+- The trigger attaches to `auth.users` via an `AFTER INSERT` trigger on the auth schema indirectly (using a function in public schema that references `NEW.id` and `NEW.email`). This is the standard Supabase pattern.
+- `time_entries` and `week_statuses` will have no data until Brick 5 migrates `TimeEntriesContext` to use Supabase. The app continues using in-memory data until then.
+- Minutes validation (0/15/30/45) is enforced at the application level, not via DB constraint, to keep migrations simple.
+
+### Test Checklist
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Run migration, check database tables | 7 tables exist with seed data |
-| 2 | Load app, open DevTools Network tab | See Supabase REST calls to `departments`, `projects`, etc. |
-| 3 | Verify reference data page shows all departments, phases, workstreams | Same data as before, now sourced from DB |
-| 4 | Add a department via admin UI | Appears in UI (localStorage write). Does NOT appear in DB yet (expected). |
-| 5 | Refresh page | DB data loads; manually-added department from localStorage may appear via fallback merge (acceptable for now) |
-| 6 | Clear localStorage, refresh | App loads entirely from Supabase -- seed data visible, no errors |
-
-### Risks / Notes
-
-- **ID format**: Using `text` PKs preserves compatibility with all existing code that references IDs like `dept-finance`. Migration to UUIDs deferred to auth brick.
-- **Write gap**: Writes go to localStorage, reads come from Supabase. This is intentional and temporary. The next brick (auth + write policies) will close this gap.
-- **No auth dependency**: This brick works with the anon key. No sign-in changes needed.
+| 1 | Run migration, check database | 4 new tables exist: `profiles`, `user_roles`, `time_entries`, `week_statuses` |
+| 2 | Check `app_role` enum | Enum exists with values `admin`, `employee` |
+| 3 | Check `has_role()` function | Function exists and is `SECURITY DEFINER` |
+| 4 | Verify RLS is enabled on all 4 tables | All tables show RLS enabled |
+| 5 | App still loads and works normally | No regressions -- these tables are not yet consumed by application code |
+| 6 | Verify existing reference data tables unaffected | Departments, projects, phases etc. still return data |
 
