@@ -94,7 +94,7 @@ Deno.serve(async (req) => {
       if (Object.keys(profileUpdates).length > 0) {
         const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', userId);
         if (updateErr) {
-          console.error('Profile update error:', updateErr);
+          return jsonResponse({ error: 'Profile update failed: ' + updateErr.message }, 400);
         }
       }
 
