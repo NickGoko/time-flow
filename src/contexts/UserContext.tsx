@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useCallback, useMemo, useEffect, ReactNode } from 'react';
 import { User, AppRole } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import type { Session } from '@supabase/supabase-js';
 
 interface UserContextType {
@@ -12,9 +13,9 @@ interface UserContextType {
   appRole: AppRole | null;
   isAdmin: boolean;
   isLoading: boolean;
-  addUser: (data: Omit<User, 'id'>) => void;
-  updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => void;
-  toggleUserActive: (id: string) => void;
+  addUser: (data: Omit<User, 'id'>) => Promise<void>;
+  updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => Promise<void>;
+  toggleUserActive: (id: string) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -48,7 +49,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [allUsersList, setAllUsersList] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch all users (for admin pages)
   const refreshAllUsers = useCallback(async () => {
     const { data: profiles } = await supabase.from('profiles').select('*');
     const { data: roles } = await supabase.from('user_roles').select('user_id, role');
@@ -73,7 +73,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setAllUsersList(users);
   }, []);
 
-  // Handle session changes
   const handleSession = useCallback(async (session: Session | null) => {
     if (!session?.user) {
       setCurrentUserState(null);
@@ -85,21 +84,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCurrentUserState(user);
     setIsLoading(false);
 
-    // Fetch all users once authenticated (admin needs this)
     if (user) {
       refreshAllUsers();
     }
   }, [refreshAllUsers]);
 
   useEffect(() => {
-    // Set up auth listener FIRST
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         await handleSession(session);
       }
     );
 
-    // Then check existing session
     supabase.auth.getSession().then(({ data: { session } }) => {
       handleSession(session);
     });
@@ -116,18 +112,77 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCurrentUserState(null);
   }, []);
 
-  // These are no-ops until Brick 6 (admin edge functions)
-  const addUser = useCallback((_data: Omit<User, 'id'>) => {
-    console.warn('addUser: not implemented yet (Brick 6)');
-  }, []);
+  // ── Admin user management via Edge Function ───────────────────
 
-  const updateUser = useCallback((_id: string, _updates: Partial<Omit<User, 'id'>>) => {
-    console.warn('updateUser: not implemented yet (Brick 6)');
-  }, []);
+  const addUser = useCallback(async (data: Omit<User, 'id'>) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      body: {
+        action: 'create',
+        email: data.email,
+        name: data.name,
+        departmentId: data.departmentId,
+        role: data.role,
+        appRole: data.appRole,
+        weeklyExpectedHours: data.weeklyExpectedHours,
+      },
+    });
 
-  const toggleUserActive = useCallback((_id: string) => {
-    console.warn('toggleUserActive: not implemented yet (Brick 6)');
-  }, []);
+    if (error) {
+      toast.error('Failed to create user: ' + error.message);
+      throw error;
+    }
+    if (result?.error) {
+      toast.error('Failed to create user: ' + result.error);
+      throw new Error(result.error);
+    }
+
+    toast.success('User invited successfully. They will receive an email to set their password.');
+    await refreshAllUsers();
+  }, [refreshAllUsers]);
+
+  const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      body: { action: 'update', userId: id, updates },
+    });
+
+    if (error) {
+      toast.error('Failed to update user: ' + error.message);
+      throw error;
+    }
+    if (result?.error) {
+      toast.error('Failed to update user: ' + result.error);
+      throw new Error(result.error);
+    }
+
+    toast.success('User updated successfully.');
+    await refreshAllUsers();
+
+    // Refresh current user if we updated ourselves
+    if (id === currentUser?.id) {
+      const session = (await supabase.auth.getSession()).data.session;
+      if (session) {
+        const refreshed = await fetchUserProfile(session.user.id);
+        if (refreshed) setCurrentUserState(refreshed);
+      }
+    }
+  }, [refreshAllUsers, currentUser?.id]);
+
+  const toggleUserActive = useCallback(async (id: string) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      body: { action: 'toggle-active', userId: id },
+    });
+
+    if (error) {
+      toast.error('Failed to toggle user: ' + error.message);
+      throw error;
+    }
+    if (result?.error) {
+      toast.error('Failed to toggle user: ' + result.error);
+      throw new Error(result.error);
+    }
+
+    await refreshAllUsers();
+  }, [refreshAllUsers]);
 
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
 

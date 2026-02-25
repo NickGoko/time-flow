@@ -48,17 +48,16 @@ export function UsersTable() {
     setDialogOpen(true);
   }, []);
 
-  const handleToggle = useCallback((id: string) => {
-    // Prevent deactivating self
+  const handleToggle = useCallback(async (id: string) => {
     if (id === currentUser?.id) return;
-    toggleUserActive(id);
+    await toggleUserActive(id);
   }, [currentUser, toggleUserActive]);
 
-  const handleSave = useCallback((data: Omit<User, 'id'>) => {
+  const handleSave = useCallback(async (data: Omit<User, 'id'>) => {
     if (editingUser) {
-      updateUser(editingUser.id, data);
+      await updateUser(editingUser.id, data);
     } else {
-      addUser(data);
+      await addUser(data);
     }
   }, [editingUser, updateUser, addUser]);
 
@@ -70,7 +69,7 @@ export function UsersTable() {
         onToggleActive={handleToggle}
         onEdit={handleEdit}
         onAdd={handleAdd}
-        addLabel="Add User"
+        addLabel="Invite User"
         entityLabel="user"
         searchPlaceholder="Search by name or email…"
         searchKeys={['name', 'email']}
