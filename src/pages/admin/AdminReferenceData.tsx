@@ -1,11 +1,12 @@
+import { useState } from 'react';
 import { TopBar } from '@/components/TopBar';
-
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { WorkstreamsTable } from '@/components/admin/WorkstreamsTable';
 import { WorkAreasTable } from '@/components/admin/WorkAreasTable';
 import { DeliverablesTable } from '@/components/admin/DeliverablesTable';
 import { PhasesTable } from '@/components/admin/PhasesTable';
+import { DepartmentDialog } from '@/components/admin/DepartmentDialog';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import type { Department } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -17,6 +18,8 @@ const deptColumns: CrudColumn<Department>[] = [
 export default function AdminReferenceData() {
   const { departments, toggleDepartmentActive } = useReferenceData();
   const { toast } = useToast();
+  const [deptDialogOpen, setDeptDialogOpen] = useState(false);
+  const [editingDept, setEditingDept] = useState<Department | null>(null);
 
   return (
     <div className="min-h-screen bg-background">
@@ -46,11 +49,13 @@ export default function AdminReferenceData() {
                     description: dept?.name,
                   });
                 }}
-                onEdit={() => {
-                  toast({ title: 'Edit coming in Brick 3', description: 'Department editing is not yet implemented.' });
+                onEdit={(dept) => {
+                  setEditingDept(dept);
+                  setDeptDialogOpen(true);
                 }}
                 onAdd={() => {
-                  toast({ title: 'Add coming in Brick 3', description: 'Department creation is not yet implemented.' });
+                  setEditingDept(null);
+                  setDeptDialogOpen(true);
                 }}
                 addLabel="Add Department"
                 entityLabel="department"
@@ -78,6 +83,8 @@ export default function AdminReferenceData() {
           </TabsContent>
         </Tabs>
       </main>
+
+      <DepartmentDialog open={deptDialogOpen} onOpenChange={setDeptDialogOpen} editing={editingDept} />
     </div>
   );
 }

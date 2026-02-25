@@ -72,6 +72,8 @@ interface ReferenceDataContextType {
 
   // CRUD methods
   toggleDepartmentActive: (id: string) => void;
+  addDepartment: (name: string) => void;
+  updateDepartment: (id: string, name: string) => void;
   addPhase: (name: string) => void;
   updatePhase: (id: string, name: string) => void;
   togglePhaseActive: (id: string) => void;
@@ -176,6 +178,29 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     (id: string) => {
       setDepartments(prev => {
         const next = prev.map(d => d.id === id ? { ...d, isActive: !d.isActive } : d);
+        persist(LS_DEPARTMENTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const addDepartment = useCallback(
+    (name: string) => {
+      setDepartments(prev => {
+        const id = 'dept-' + Date.now();
+        const next = [...prev, { id, name, isActive: true }];
+        persist(LS_DEPARTMENTS, next);
+        return next;
+      });
+    },
+    [],
+  );
+
+  const updateDepartment = useCallback(
+    (id: string, name: string) => {
+      setDepartments(prev => {
+        const next = prev.map(d => d.id === id ? { ...d, name } : d);
         persist(LS_DEPARTMENTS, next);
         return next;
       });
@@ -381,6 +406,8 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       getGroupedWorkstreams,
       getProjectById,
       toggleDepartmentActive,
+      addDepartment,
+      updateDepartment,
       addPhase,
       updatePhase,
       togglePhaseActive,
@@ -398,7 +425,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       updateDeliverableType,
       toggleDeliverableTypeActive,
     }),
-    [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addPhase, updatePhase, togglePhaseActive, addActivityType, updateActivityType, toggleActivityTypeActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive, addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive],
+    [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes, getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, toggleDepartmentActive, addDepartment, updateDepartment, addPhase, updatePhase, togglePhaseActive, addActivityType, updateActivityType, toggleActivityTypeActive, addProject, updateProject, toggleProjectActive, setProjectDepartmentAccess, addWorkArea, updateWorkArea, toggleWorkAreaActive, addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive],
   );
 
   return (
