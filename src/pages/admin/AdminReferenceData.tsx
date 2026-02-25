@@ -1,10 +1,10 @@
 import { TopBar } from '@/components/TopBar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Card } from '@/components/ui/card';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { WorkstreamsTable } from '@/components/admin/WorkstreamsTable';
 import { WorkAreasTable } from '@/components/admin/WorkAreasTable';
 import { DeliverablesTable } from '@/components/admin/DeliverablesTable';
+import { PhasesTable } from '@/components/admin/PhasesTable';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import type { Department } from '@/types';
 import { useToast } from '@/hooks/use-toast';
@@ -65,9 +65,7 @@ export default function AdminReferenceData() {
           </TabsContent>
 
           <TabsContent value="phases" className="mt-6">
-            <Card className="p-6 text-center text-muted-foreground">
-              <p className="text-sm">Phases &amp; Activity Types — coming in Brick 4</p>
-            </Card>
+            <PhasesTable />
           </TabsContent>
 
           <TabsContent value="work-areas" className="mt-6">
