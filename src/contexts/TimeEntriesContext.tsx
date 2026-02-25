@@ -38,7 +38,7 @@ interface TimeEntriesContextType {
   getOwnEntries: () => TimeEntry[];
   getAllEntries: () => TimeEntry[];
   weekStatuses: WeekStatus[];
-  addEntry: (entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => void;
+  addEntry: (entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => void;
   updateEntry: (id: string, updates: Partial<TimeEntry>) => void;
   deleteEntry: (id: string) => void;
   getEntriesForWeek: (userId: string, weekStart: string) => TimeEntryWithDetails[];
@@ -66,10 +66,11 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const addEntry = useCallback((entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt'>) => {
-    if (!assertOwnership(entry.userId, 'addEntry')) return;
+  const addEntry = useCallback((entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => {
+    if (!currentUser) return;
     const newEntry: TimeEntry = {
       ...entry,
+      userId: currentUser.id,
       id: `entry-${Date.now()}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -78,12 +79,13 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
   }, [currentUser]);
 
   const updateEntry = useCallback((id: string, updates: Partial<TimeEntry>) => {
+    const { userId: _strip, ...safeUpdates } = updates;
     setEntries(prev => {
       const existing = prev.find(e => e.id === id);
       if (existing && !assertOwnership(existing.userId, 'updateEntry')) return prev;
       return prev.map(entry =>
         entry.id === id
-          ? { ...entry, ...updates, updatedAt: new Date().toISOString() }
+          ? { ...entry, ...safeUpdates, updatedAt: new Date().toISOString() }
           : entry
       );
     });

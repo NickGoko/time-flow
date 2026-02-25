@@ -178,7 +178,6 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     if (!isFormValid) return;
 
     addEntry({
-      userId: currentUser.id,
       projectId,
       ...(isInternal
         ? { workAreaId: phaseId, workAreaActivityTypeId: activityTypeId || undefined }

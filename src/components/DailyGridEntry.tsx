@@ -195,7 +195,6 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       const rowProject = projects.find(p => p.id === row.projectId);
       const rowIsInternal = rowProject?.type === 'internal_department';
       addEntry({
-        userId: currentUser.id,
         projectId: row.projectId,
         ...(rowIsInternal
           ? { workAreaId: row.phaseId, workAreaActivityTypeId: row.activityTypeId || undefined }
