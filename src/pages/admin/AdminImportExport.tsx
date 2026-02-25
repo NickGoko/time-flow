@@ -1,6 +1,7 @@
 import { TopBar } from '@/components/TopBar';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
+import { ExportPanel } from '@/components/admin/ExportPanel';
 
 export default function AdminImportExport() {
   return (
@@ -16,9 +17,7 @@ export default function AdminImportExport() {
           </TabsList>
 
           <TabsContent value="export" className="mt-6">
-            <Card className="p-6 text-center text-muted-foreground">
-              <p className="text-sm">CSV Export — coming in Brick 6</p>
-            </Card>
+            <ExportPanel />
           </TabsContent>
 
           <TabsContent value="import" className="mt-6">
