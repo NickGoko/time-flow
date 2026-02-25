@@ -73,6 +73,17 @@ Deno.serve(async (req) => {
 
       const userId = inviteData.user.id;
 
+      // Wait for handle_new_user trigger to create the profile row
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const { data: exists } = await adminClient
+          .from('profiles')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+        if (exists) break;
+        await new Promise(r => setTimeout(r, 300));
+      }
+
       // Update profile with additional fields
       const profileUpdates: Record<string, unknown> = {};
       if (name) profileUpdates.name = name;
@@ -81,7 +92,10 @@ Deno.serve(async (req) => {
       if (weeklyExpectedHours !== undefined) profileUpdates.weekly_expected_hours = weeklyExpectedHours;
 
       if (Object.keys(profileUpdates).length > 0) {
-        await adminClient.from('profiles').update(profileUpdates).eq('id', userId);
+        const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', userId);
+        if (updateErr) {
+          console.error('Profile update error:', updateErr);
+        }
       }
 
       // If appRole is admin, update user_roles
