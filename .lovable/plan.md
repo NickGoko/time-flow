@@ -1,63 +1,77 @@
 
 
-## Brick 8: Department Add/Edit
+## Brick 9: CSV Export
 
 ### Overview
 
-Replace the stub toast callbacks on the Departments section with a functional `DepartmentDialog` and wire up `addDepartment` / `updateDepartment` methods in `ReferenceDataContext`. Department is a simple entity with only a `name` field.
+Replace the Export tab placeholder with a functional CSV export for time entries. The admin selects a date range and optionally filters by user(s), then downloads a CSV file with all entry details resolved to human-readable names.
 
-### Files (3 files)
+### Files (2 files)
 
 | # | File | Action | Description |
 |---|---|---|---|
-| 1 | `src/contexts/ReferenceDataContext.tsx` | EDIT | Add `addDepartment(name: string)` and `updateDepartment(id: string, name: string)` methods. Expose on context type. |
-| 2 | `src/components/admin/DepartmentDialog.tsx` | NEW | Add/Edit dialog with a single "Name" field. Uses `EditDialog` wrapper from `AdminCrudTable`. |
-| 3 | `src/pages/admin/AdminReferenceData.tsx` | EDIT | Import `DepartmentDialog`, add state for dialog open/editing, wire `onAdd`/`onEdit` to open dialog instead of showing stubs. |
+| 1 | `src/components/admin/ExportPanel.tsx` | NEW | Filter UI (date range picker, user multi-select) + export button. Builds CSV in-browser and triggers download. |
+| 2 | `src/pages/admin/AdminImportExport.tsx` | EDIT | Replace Export tab placeholder with `ExportPanel`. |
 
-### Context Changes (ReferenceDataContext.tsx)
+### ExportPanel Design
 
-```text
-addDepartment(name: string): void
-  - ID: 'dept-' + Date.now()
-  - isActive: true
-  - Persists to localStorage (LS_DEPARTMENTS)
+**Filters (top section)**
 
-updateDepartment(id: string, name: string): void
-  - Merges name, persists to localStorage
-```
-
-Both follow the exact same `useCallback` + `persist` pattern as `addPhase`/`updatePhase`.
-
-### DepartmentDialog
-
-Single-field dialog following the same pattern as `PhaseDialog` in phase mode:
-
-| Field | Type | Validation |
+| Filter | Component | Default |
 |---|---|---|
-| Name | Input (text) | Required |
+| Start Date | `<Input type="date" />` | First day of current month |
+| End Date | `<Input type="date" />` | Today |
+| Users | Multi-select checkboxes in a Popover | All users selected |
 
-Props: `open`, `onOpenChange`, `editing: Department | null`. Calls `addDepartment` or `updateDepartment` from context, then closes.
+**Export Button**: "Download CSV" -- disabled when no entries match filters.
 
-### AdminReferenceData.tsx Changes
+**CSV Generation Logic** (all in-browser, no backend):
 
-- Add `useState` for `deptDialogOpen` and `editingDept`
-- `onAdd` opens dialog with `editingDept = null`
-- `onEdit` opens dialog with the selected department
-- Render `DepartmentDialog` component
+1. Read `getAllEntries()` from `TimeEntriesContext`
+2. Filter by date range and selected user IDs
+3. For each entry, resolve IDs to names using `ReferenceDataContext` lookups (user name, department, project name, phase, activity type, work area)
+4. Build CSV string with headers and rows
+5. Create a `Blob`, generate object URL, trigger download via a temporary `<a>` element
+
+### CSV Columns
+
+| Column | Source |
+|---|---|
+| Date | `entry.date` |
+| User | Resolved from `userId` |
+| Department | Resolved from user's `departmentId` |
+| Workstream | Resolved from `projectId` (project name) |
+| Workstream Type | Project's `type` ("External" / "Internal") |
+| Phase | Resolved from `phaseId` or work area's phase |
+| Activity Type | Resolved from `activityTypeId` or `workAreaActivityTypeId` |
+| Task Description | `entry.taskDescription` |
+| Deliverable Type | `entry.deliverableType` label |
+| Deliverable Description | `entry.deliverableDescription` or empty |
+| Hours | Decimal format: `(hours * 60 + minutes) / 60` rounded to 2 decimals |
+| Billable Status | Label from `getBillableLabel()` |
+| Comments | `entry.comments` or empty |
+
+### Implementation Details
+
+- CSV values are escaped: double-quotes in content are doubled, values containing commas or newlines are wrapped in quotes
+- Filename format: `time-entries-YYYY-MM-DD-to-YYYY-MM-DD.csv`
+- Uses existing `useTimeEntries().getAllEntries()` and `useReferenceData()` for all data -- no new context methods needed
+- User list sourced from `useAuthenticatedUser().allUsers` (includes inactive for completeness of historical data -- actually will use the full `allUsersList` if available, otherwise `allUsers`)
 
 ### What Does NOT Change
 
-- `AdminCrudTable` (reused as-is)
-- `seed.ts`, types, routing
-- Other CRUD tables (Workstreams, Phases, Work Areas, Deliverables)
-- `UserContext` or `TimeEntriesContext`
+- TimeEntriesContext, ReferenceDataContext, UserContext (read-only usage)
+- Import tab (remains placeholder)
+- Types, seed data, routing
 
 ### Test Plan
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Click "Add Department", enter "Research", save | New department row appears |
-| 2 | Click edit on "Finance & Admin", rename to "Finance", save | Name updates in table |
-| 3 | Toggle a department inactive then active | Row greys/ungreys; department availability updates in user/workstream forms |
-| 4 | Refresh page | All changes persist |
+| 1 | Navigate to `/admin/import-export`, Export tab | See date range inputs, user filter, and Download button |
+| 2 | Click "Download CSV" with defaults | CSV downloads with current month entries, all users |
+| 3 | Narrow date range to a single day | CSV contains only that day's entries |
+| 4 | Deselect all users except one | CSV contains only that user's entries |
+| 5 | Open CSV in Excel/Sheets | Columns are correct, names resolved, no raw IDs visible |
+| 6 | Entry with commas in task description | Value is properly quoted in CSV |
 
