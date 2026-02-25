@@ -1,52 +1,83 @@
 
 
-## Brick 5: Deliverable Types CRUD
+## Brick 6: Phases & Activity Types CRUD
 
 ### Overview
 
-Implement admin management for Deliverable Types on a new "Deliverables" tab of the Reference Data page. Deliverable types are currently defined as a static union type and constant array in `types/index.ts`. To support CRUD, we'll shift them to the `ReferenceDataContext` with localStorage persistence, while keeping the entry form's dependency on them minimal.
+Add admin management for Phases and their child Activity Types on the "Phases" tab. Phases are the parent; each activity type belongs to one phase via `phaseId`. Both support name + isActive. The entry form already reads via `getActivitiesForPhase` and `getPhasesForProject` which filter by `isActive`, so changes propagate automatically.
 
-### Files (5 files)
+### Files (4 files)
 
 | # | File | Action | Description |
 |---|---|---|---|
-| 1 | `src/types/index.ts` | EDIT | Add `DeliverableTypeItem` interface. Update `DeliverableType` to be a string (or keep it as is if needed for compatibility). |
-| 2 | `src/contexts/ReferenceDataContext.tsx` | EDIT | Add `deliverableTypes` to state (seeded from `DELIVERABLE_TYPES`). Add `addDeliverableType`, `updateDeliverableType`, `toggleDeliverableTypeActive` methods. |
-| 3 | `src/components/admin/DeliverablesTable.tsx` | NEW | Renders `AdminCrudTable<DeliverableTypeItem>` with columns: Name. Wires toggle/edit/add callbacks. |
-| 4 | `src/components/admin/DeliverableDialog.tsx` | NEW | Simple Add/Edit dialog with a single "Name" field. |
-| 5 | `src/pages/admin/AdminReferenceData.tsx` | EDIT | Add "Deliverables" tab. Replace the existing tabs list and content to include `DeliverablesTable`. |
+| 1 | `src/contexts/ReferenceDataContext.tsx` | EDIT | Make `phases` and `activityTypes` mutable (add `setPhases`, `setActivityTypes`). Add 6 methods: `addPhase`, `updatePhase`, `togglePhaseActive`, `addActivityType`, `updateActivityType`, `toggleActivityTypeActive`. Expose on context type. |
+| 2 | `src/components/admin/PhasesTable.tsx` | NEW | Two-level display: phases listed via `AdminCrudTable`, with an expandable/inline section showing child activity types for the selected phase. Includes phase-level add/edit/toggle and a nested activity types sub-table. |
+| 3 | `src/components/admin/PhaseDialog.tsx` | NEW | Add/Edit dialog for a phase (single "Name" field) and for an activity type (Name field + parent Phase select, pre-filled when adding from within a phase). |
+| 4 | `src/pages/admin/AdminReferenceData.tsx` | EDIT | Replace the Phases placeholder card with `PhasesTable`. |
 
 ### Context Changes (ReferenceDataContext.tsx)
 
-```typescript
-interface DeliverableTypeItem {
-  id: string;
-  name: string;
-  isActive: boolean;
-}
+New methods added to the interface:
 
-// New methods
-addDeliverableType(name: string): void
-  - Generates ID: 'del-' + Date.now()
+```text
+addPhase(name: string): void
+  - ID: 'phase-' + Date.now()
+  - isActive: true
+  - Persists to localStorage (LS_PHASES)
+
+updatePhase(id: string, name: string): void
   - Persists to localStorage
 
-updateDeliverableType(id: string, name: string): void
-  - Persists to localStorage
+togglePhaseActive(id: string): void
+  - Flips isActive, persists
 
-toggleDeliverableTypeActive(id: string): void
+addActivityType(name: string, phaseId: string): void
+  - ID: 'act-' + Date.now()
+  - isActive: true
+  - Persists to localStorage (LS_ACTIVITY_TYPES)
+
+updateActivityType(id: string, updates: { name?: string; phaseId?: string }): void
+  - Merges updates, persists
+
+toggleActivityTypeActive(id: string): void
   - Flips isActive, persists
 ```
 
-### Data Flow
-- **Entry Form**: Will be updated (if necessary) to read `deliverableTypes.filter(d => d.isActive)` from `ReferenceDataContext` instead of the static `DELIVERABLE_TYPES` constant.
+Implementation: change line 95-96 from `const [phases]` / `const [activityTypes]` to include setters, then add 6 `useCallback` methods following the exact same pattern as existing CRUD methods (e.g., `addDeliverableType`).
+
+### PhasesTable Design
+
+The table displays phases using `AdminCrudTable<Phase>` with a single "Name" column. When a phase row is clicked or expanded, a nested sub-table appears below it showing that phase's activity types (also using `AdminCrudTable<ActivityType>`). Each level has its own Add button:
+
+- Top level: "Add Phase" button
+- Nested level: "Add Activity Type" button (pre-fills `phaseId` to the parent phase)
+
+### PhaseDialog
+
+A single dialog component handling both entity types via a `mode` prop:
+
+| Mode | Fields | Notes |
+|---|---|---|
+| phase | Name (Input) | Simple single field |
+| activityType | Name (Input), Phase (Select) | Phase pre-selected when adding from nested view; editable when adding from top-level |
+
+### What Does NOT Change
+
+- AdminCrudTable (reused as-is)
+- TimeEntryForm (reads from `getActivitiesForPhase` and `getPhasesForProject` which already filter by `isActive`)
+- Other tables (Workstreams, Work Areas, Deliverables)
+- Seed data, types, routing
 
 ### Test Plan
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Navigate to `/admin/reference-data`, click "Deliverables" tab | See table with default types (Workshop, Reporting, etc.) |
-| 2 | Click "Add Deliverable Type", enter "Technical Spec" | Row appears in table |
-| 3 | Toggle "Workshop" to inactive | Row greys out; "Workshop" disappears from the time entry form dropdown |
-| 4 | Edit "Reporting" to "Project Reporting" | Name updates in table and entry form dropdown |
-| 5 | Refresh page | All changes persist in localStorage |
+| 1 | Navigate to `/admin/reference-data`, click "Phases" tab | See all 9 phases (Inception, Recruitment, Workshops, etc.) |
+| 2 | Click/expand "Inception" phase | See child activity types (Kickoff preparation, Kickoff meeting, etc.) |
+| 3 | Click "Add Phase", enter "Pilot Testing" | New phase row appears in table |
+| 4 | Expand "Pilot Testing", click "Add Activity Type", enter "Field trial" | Activity appears under Pilot Testing |
+| 5 | Toggle "Workshops / bootcamps" phase inactive | Row greys out; phase disappears from external project dropdowns in entry form |
+| 6 | Toggle activity "Kickoff preparation" inactive under Inception | Activity disappears from entry form when Inception phase is selected |
+| 7 | Edit phase name "Reporting" to "Reports & Documentation" | Name updates in table and entry form |
+| 8 | Refresh page | All changes persist (localStorage) |
 
