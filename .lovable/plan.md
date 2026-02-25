@@ -1,121 +1,197 @@
 
 
-## Brick 3: Auth UI + Session Context
+## Brick 4: Wire Admin CRUD (Reference Data + User Management) to Database
 
 ### Objective
 
-Replace the demo user-picker sign-in with real email/password authentication, and rewire `UserContext` to use the authentication session + `profiles` table + `user_roles` table as the source of truth for the current user.
+Replace all localStorage-based mutations in `ReferenceDataContext` with Supabase writes, AND implement secure admin user management via an Edge Function that uses the service role key to create/invite users and manage their profiles and roles.
 
-### Current State
+### Scope: 2 Parts
 
-- `SignIn.tsx`: Shows a grid of demo users; clicking one stores their ID in localStorage
-- `UserContext.tsx`: Reads `currentUser` from localStorage; provides `allUsers`, `addUser`, `updateUser`, `toggleUserActive` (all localStorage-based)
-- `UserSelector.tsx`: Shows current user name + sign-out button (clears localStorage)
-- `App.tsx`: `SessionGate` checks `currentUser !== null`; `AdminGuard` checks `isAdmin`
-- The `User` type uses `string` for `id` and includes `appRole: AppRole`
+**Part A -- Reference Data CRUD (7 tables)**
+Rewrite the 18 mutation callbacks in `ReferenceDataContext.tsx` to write to the database instead of localStorage.
 
-### Key Design Decision: User type compatibility
+**Part B -- Admin User Management (Edge Function)**
+Create an `admin-users` Edge Function that uses the Supabase Admin API (service role key, server-side only) to:
+- Create/invite new users (creates `auth.users` entry, which triggers profile + role creation)
+- Update user profiles (name, department, role, weekly hours)
+- Update user app roles (admin/employee) in `user_roles`
+- Toggle user active status
 
-The `User` interface has `id: string` -- this stays compatible since `uuid` serializes to string. The `appRole` field will now come from `user_roles` table instead of being stored on the user object directly. We map `profiles` + `user_roles` query results into the existing `User` shape so **no downstream components need changes**.
+---
 
-### Files to Change (4 files)
+### Part A: Reference Data CRUD
 
-| # | File | Action | What Changes |
-|---|---|---|---|
-| 1 | `src/contexts/UserContext.tsx` | REWRITE | Replace localStorage identity with Supabase Auth session. On mount: listen to `onAuthStateChange`, fetch profile + role from DB, map to `User` type. `signOut` calls `supabase.auth.signOut()`. Keep `allUsers`/`addUser`/`updateUser`/`toggleUserActive` reading from `profiles` table. Add `isLoading` state. |
-| 2 | `src/pages/SignIn.tsx` | REWRITE | Email/password login form with tabs for Sign In and Sign Up. On submit, call `supabase.auth.signInWithPassword()` or `supabase.auth.signUp()`. Keep the demo user-picker behind `import.meta.env.DEV` flag. |
-| 3 | `src/components/UserSelector.tsx` | EDIT (small) | Change `handleSignOut` to call `supabase.auth.signOut()` instead of the context `signOut` (context `signOut` will internally do the same, but this ensures the Supabase session is cleared). Actually -- context `signOut` will call supabase internally, so this file only needs the navigate kept. Minimal change. |
-| 4 | `src/App.tsx` | EDIT (small) | `SessionGate` needs to handle loading state (show spinner while auth resolves). No route changes needed. |
+**Migration (1 file):** Add INSERT, UPDATE, DELETE RLS policies to all 7 reference tables, gated by `has_role(auth.uid(), 'admin'::app_role)`.
 
-### Detailed Plan
+Tables: `departments`, `projects`, `project_department_access`, `phases`, `activity_types`, `internal_work_areas`, `deliverable_types`.
 
-**Step 1: Rewrite `UserContext.tsx`**
+**Code change (1 file):** `src/contexts/ReferenceDataContext.tsx`
+- Replace all 18 `persist(LS_KEY, ...)` calls with Supabase `.insert()` / `.update()` / `.delete()`
+- Use optimistic UI pattern: update state immediately, rollback on DB error
+- Remove `loadOrSeed`, `persist`, and all `LS_*` constants
+- Keep initial fetch from Supabase (already working from Brick 1)
 
-The provider will:
-1. Initialize with `isLoading: true`, `currentUser: null`
-2. Set up `supabase.auth.onAuthStateChange()` listener FIRST (before `getSession`)
-3. On `SIGNED_IN` / `TOKEN_REFRESHED`: fetch `profiles` row + `user_roles` row for `session.user.id`
-4. Map DB result to the existing `User` type:
-   ```text
-   {
-     id: profile.id,           // uuid as string
-     name: profile.name,
-     email: profile.email,
-     departmentId: profile.department_id ?? '',
-     role: profile.role,       // job title
-     appRole: userRole.role,   // 'admin' | 'employee'
-     weeklyExpectedHours: profile.weekly_expected_hours,
-     isActive: profile.is_active,
-     avatarUrl: profile.avatar_url
-   }
-   ```
-5. On `SIGNED_OUT`: set `currentUser` to null
-6. Set `isLoading: false` after initial session check
-7. `signOut()` calls `supabase.auth.signOut()`
-8. `allUsers` / `allUsersList`: fetch from `profiles` table joined with `user_roles` (needed for admin user management). Cache in state.
-9. `addUser`, `updateUser`, `toggleUserActive`: keep signatures but defer to Brick 6 (admin edge function). For now, these can be no-ops or throw "not implemented" -- OR we can keep localStorage fallback temporarily. Decision: **keep them as no-ops with a console.warn** since admin user management will be fully reworked in Brick 6.
+---
 
-**Step 2: Rewrite `SignIn.tsx`**
+### Part B: Admin User Management
 
-- Two tabs: "Sign In" and "Sign Up"
-- Sign In: email + password fields, submit calls `supabase.auth.signInWithPassword()`
-- Sign Up: email + password + name fields, submit calls `supabase.auth.signUp()` with `data: { full_name: name }` (the trigger uses `raw_user_meta_data->>'full_name'`)
-- Error display for invalid credentials, already-registered, etc.
-- After successful sign-in, `onAuthStateChange` in UserContext handles the rest -- no manual navigate needed (SessionGate will redirect)
-- DEV-only: show the existing demo user picker below the form, behind `import.meta.env.DEV`
+**Why an Edge Function?**
+Creating users requires the Supabase Admin API (`supabase.auth.admin.createUser()` or `inviteUserByEmail()`), which needs the **service role key**. This key must NEVER be in client code. An Edge Function runs server-side and can safely use it.
 
-**Step 3: Update `App.tsx`**
+**Edge Function: `supabase/functions/admin-users/index.ts`**
 
-- `SessionGate`: add `isLoading` check from context. While loading, render a centered spinner. Once resolved, redirect to `/sign-in` if no user.
-- Export `isLoading` from UserContext (add to interface).
+Endpoints (single function, action-based):
+```text
+POST /admin-users
+Body: { action: "create", email, name, departmentId, role, appRole, weeklyExpectedHours }
+      { action: "update", userId, updates: { name?, departmentId?, role?, appRole?, weeklyExpectedHours? } }
+      { action: "toggle-active", userId }
+```
 
-**Step 4: Update `UserSelector.tsx`**
+Logic per action:
 
-- Minimal: `signOut` from context already calls `supabase.auth.signOut()`, so the only change is ensuring navigate happens after the async sign-out completes (add `await`).
+1. **create**: 
+   - Validate caller is admin (via `getClaims()` + check `user_roles`)
+   - Call `adminClient.auth.admin.inviteUserByEmail(email, { data: { full_name: name } })`
+   - This triggers `handle_new_user` trigger, creating profile + default employee role
+   - Then update the profile with department, role, weekly hours
+   - If appRole is 'admin', update `user_roles` accordingly
 
-### What Does NOT Change
+2. **update**:
+   - Validate caller is admin
+   - Update `profiles` row (name, department_id, role, weekly_expected_hours)
+   - If appRole changed, update `user_roles` (delete old + insert new, or upsert)
 
-- `types/index.ts` -- `User` interface stays identical
-- `ReferenceDataContext.tsx` -- untouched
-- `TimeEntriesContext.tsx` -- untouched
-- All admin pages, components, TopBar, NavLink
-- All UI components
-- No new routes needed (sign-up is a tab on the sign-in page, not a separate route)
-- No migration needed (tables already exist from Brick 2)
+3. **toggle-active**:
+   - Validate caller is admin
+   - Toggle `is_active` on `profiles`
 
-### RLS Note
+**Config (`supabase/config.toml`):** Add `[functions.admin-users]` with `verify_jwt = false`.
 
-The `profiles` SELECT policy currently uses `USING (true)` which requires authentication. The `user_roles` SELECT policy uses `USING (auth.uid() = user_id)` so users can only read their own role. This is correct -- the context fetches the current user's own profile and role after auth.
+**RLS additions needed:**
+- Admin INSERT/UPDATE/DELETE on `profiles` (currently only self-update exists)
+- Admin INSERT/UPDATE/DELETE on `user_roles` (currently read-only)
 
-However, `allUsers` (used by admin pages) fetches ALL profiles. The current `profiles` SELECT policy allows this for any authenticated user. The `user_roles` policy only allows reading own roles -- so the admin's `allUsers` list won't have `appRole` for other users. We need to either:
-- Add an admin SELECT policy on `user_roles`: `has_role(auth.uid(), 'admin')` -- **requires a small migration**
-- Or fetch `appRole` only for the current user and leave it undefined for others
+These will be included in the migration.
 
-Decision: **Add a migration** to allow admins to read all `user_roles`. This is 1 SQL statement.
+**Code changes:**
 
-### Migration Needed (1 small addition)
+| # | File | Action |
+|---|---|---|
+| 1 | Migration SQL | NEW -- admin write RLS on 7 ref tables + profiles + user_roles |
+| 2 | `src/contexts/ReferenceDataContext.tsx` | EDIT -- rewrite 18 mutations to use Supabase client |
+| 3 | `supabase/functions/admin-users/index.ts` | NEW -- Edge Function for user CRUD |
+| 4 | `src/contexts/UserContext.tsx` | EDIT -- wire `addUser`, `updateUser`, `toggleUserActive` to call the Edge Function |
+| 5 | `src/components/admin/UserDialog.tsx` | EDIT (small) -- make dialog async, show loading/error states |
+| 6 | `src/components/admin/UsersTable.tsx` | EDIT (small) -- handle async save, refresh user list after mutations |
 
-Add SELECT policy on `user_roles`:
+Total: 1 migration + 1 edge function + 4 code files = **6 touches**.
+
+---
+
+### Detailed Implementation
+
+**Migration SQL**
+
 ```sql
-CREATE POLICY "Admins can read all roles"
-  ON public.user_roles FOR SELECT
+-- Reference data: admin write access (7 tables x 3 operations = ~20 policies)
+-- Example for departments:
+CREATE POLICY "Admins can insert departments"
+  ON public.departments FOR INSERT TO authenticated
+  WITH CHECK (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can update departments"
+  ON public.departments FOR UPDATE TO authenticated
+  USING (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can delete departments"
+  ON public.departments FOR DELETE TO authenticated
+  USING (has_role(auth.uid(), 'admin'::app_role));
+-- (repeat for projects, phases, activity_types, internal_work_areas, 
+--  deliverable_types, project_department_access)
+
+-- User management: admin access to profiles and user_roles
+CREATE POLICY "Admins can insert profiles"
+  ON public.profiles FOR INSERT TO authenticated
+  WITH CHECK (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can update all profiles"
+  ON public.profiles FOR UPDATE TO authenticated
+  USING (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can insert user_roles"
+  ON public.user_roles FOR INSERT TO authenticated
+  WITH CHECK (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can update user_roles"
+  ON public.user_roles FOR UPDATE TO authenticated
+  USING (has_role(auth.uid(), 'admin'::app_role));
+CREATE POLICY "Admins can delete user_roles"
+  ON public.user_roles FOR DELETE TO authenticated
   USING (has_role(auth.uid(), 'admin'::app_role));
 ```
 
-This brings the file count to: 1 migration + 4 code files = **5 touches, within limit**.
+**Edge Function: `admin-users/index.ts`**
+
+```text
+1. Parse JSON body, extract { action, ... }
+2. Verify caller's JWT via getClaims()
+3. Create admin Supabase client using SUPABASE_SERVICE_ROLE_KEY
+4. Check caller has admin role in user_roles
+5. Switch on action:
+   - "create": inviteUserByEmail → update profile → optionally set admin role
+   - "update": update profiles + user_roles as needed
+   - "toggle-active": flip is_active on profiles
+6. Return result or error with CORS headers
+```
+
+**UserContext.tsx changes**
+
+Replace no-op stubs with:
+```text
+addUser(data) → supabase.functions.invoke('admin-users', { body: { action: 'create', ...data } })
+updateUser(id, updates) → supabase.functions.invoke('admin-users', { body: { action: 'update', userId: id, updates } })
+toggleUserActive(id) → supabase.functions.invoke('admin-users', { body: { action: 'toggle-active', userId: id } })
+```
+After each successful call, refresh `allUsersList` from the database.
+
+**UserDialog.tsx changes**
+
+- Add loading state during save
+- Show error toast if Edge Function returns an error
+- For "Add User" mode: email field is the primary input (user receives invite email)
+- Add helper text: "User will receive an invite email to set their password"
+
+**UsersTable.tsx changes**
+
+- Make `handleSave` async
+- Show toast on success/failure
+- Refresh user list after mutation
+
+---
+
+### What Does NOT Change
+
+- `types/index.ts` -- User interface stays identical
+- All admin UI dialogs for reference data (they call the same context methods)
+- Auth flow, routing, time entries
+- `seed.ts` -- kept but no longer imported by ReferenceDataContext
+
+### Security Summary
+
+- Service role key stays server-side in the Edge Function (accessed via `Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')`)
+- Edge Function validates the caller is an admin before any mutation
+- Client code never touches `auth.admin` APIs
+- All database writes are gated by RLS (admin-only policies)
 
 ### Test Checklist
 
 | # | Test | Expected |
 |---|---|---|
-| 1 | Navigate to `/sign-in` | See email/password login form with Sign In / Sign Up tabs |
-| 2 | Sign up with email + password + name | Success message (check email or auto-confirmed depending on config) |
-| 3 | Sign in with valid credentials | Redirected to `/` (employee) or `/admin/reports/overview` (admin) |
-| 4 | Sign in with wrong password | Error message shown, stays on sign-in page |
-| 5 | Click "Sign out" in top bar | Redirected to `/sign-in`; refreshing stays on sign-in |
-| 6 | Refresh while signed in | Session persists, user stays on current page |
-| 7 | Navigate to protected route while signed out | Redirected to `/sign-in` |
-| 8 | As admin, verify `isAdmin` is true | Admin nav links visible, admin pages accessible |
-| 9 | As employee, navigate to `/admin/*` | "Not authorised" message shown |
-| 10 | DEV mode: demo user picker visible below login form | Picker shown only in development |
+| 1 | Admin adds a department | Persists to DB, visible after refresh |
+| 2 | Admin edits a phase name | Updates in DB |
+| 3 | Admin toggles a work area inactive | `is_active` flips in DB |
+| 4 | Employee attempts reference data mutation | RLS blocks, error shown |
+| 5 | Admin creates a new user (invite) | User receives invite email, profile created in DB |
+| 6 | Admin updates user's department and role | Profile updated in DB |
+| 7 | Admin changes user's app role to admin | `user_roles` updated |
+| 8 | Admin toggles user inactive | `is_active` flips on profile |
+| 9 | Admin cannot deactivate themselves | UI prevents self-deactivation |
+| 10 | Sign out + sign in: all changes persist | No localStorage dependency |
 
