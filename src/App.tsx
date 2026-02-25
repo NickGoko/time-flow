@@ -15,6 +15,8 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminImportExport from "./pages/admin/AdminImportExport";
 import EmployeeInsights from "./pages/EmployeeInsights";
 import SignIn from "./pages/SignIn";
+import DevAccess from "./pages/DevAccess";
+import { DEV_MODE } from "@/lib/devMode";
 
 const queryClient = new QueryClient();
 
@@ -27,7 +29,7 @@ function SessionGate() {
       </div>
     );
   }
-  if (!currentUser) return <Navigate to="/sign-in" replace />;
+  if (!currentUser) return <Navigate to={DEV_MODE ? "/dev/access" : "/sign-in"} replace />;
   return <Outlet />;
 }
 
@@ -58,6 +60,7 @@ const App = () => (
           <BrowserRouter>
             <Routes>
               <Route path="/sign-in" element={<SignIn />} />
+              <Route path="/dev/access" element={<DevAccess />} />
               <Route element={<SessionGate />}>
                 <Route path="/" element={<Index />} />
                 <Route path="/me/insights" element={<EmployeeInsights />} />

@@ -3,16 +3,19 @@ import { User, AppRole } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Session } from '@supabase/supabase-js';
+import { DEV_MODE } from '@/lib/devMode';
 
 interface UserContextType {
   currentUser: User | null;
   setCurrentUser: (user: User) => void;
+  setDevUser: (user: User) => void;
   signOut: () => Promise<void>;
   allUsers: User[];
   allUsersList: User[];
   appRole: AppRole | null;
   isAdmin: boolean;
   isLoading: boolean;
+  isDevMode: boolean;
   addUser: (data: Omit<User, 'id'>) => Promise<void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
@@ -107,6 +110,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setCurrentUserState(user);
   }, []);
 
+  const setDevUser = useCallback((user: User) => {
+    if (!DEV_MODE) return;
+    setCurrentUserState(user);
+    setIsLoading(false);
+  }, []);
+
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setCurrentUserState(null);
@@ -189,16 +198,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const value = useMemo<UserContextType>(() => ({
     currentUser,
     setCurrentUser,
+    setDevUser,
     signOut,
     allUsers,
     allUsersList,
     appRole: currentUser?.appRole ?? null,
     isAdmin: currentUser?.appRole === 'admin',
     isLoading,
+    isDevMode: DEV_MODE,
     addUser,
     updateUser,
     toggleUserActive,
-  }), [currentUser, setCurrentUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive]);
+  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive]);
 
   return (
     <UserContext.Provider value={value}>
