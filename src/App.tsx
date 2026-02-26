@@ -16,12 +16,25 @@ import AdminImportExport from "./pages/admin/AdminImportExport";
 import EmployeeInsights from "./pages/EmployeeInsights";
 import SignIn from "./pages/SignIn";
 import DevAccess from "./pages/DevAccess";
-import { DEV_MODE } from "@/lib/devMode";
+import { AUTH_ENABLED, DEV_MODE } from "@/lib/devMode";
 
 const queryClient = new QueryClient();
 
 function SessionGate() {
   const { currentUser, isLoading } = useCurrentUser();
+
+  // When auth is disabled, pass through without redirect
+  if (!AUTH_ENABLED) {
+    if (isLoading) {
+      return (
+        <div className="flex min-h-screen items-center justify-center bg-background">
+          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+        </div>
+      );
+    }
+    return <Outlet />;
+  }
+
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background">
