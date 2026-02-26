@@ -3,7 +3,7 @@ import { User, AppRole } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Session } from '@supabase/supabase-js';
-import { DEV_MODE } from '@/lib/devMode';
+import { AUTH_ENABLED, DEV_MODE } from '@/lib/devMode';
 
 interface UserContextType {
   currentUser: User | null;
@@ -75,8 +75,28 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }));
 
     setAllUsersList(users);
+    return users;
   }, []);
 
+  // ── Auth-disabled / demo mode bootstrap ──────────────────────
+  useEffect(() => {
+    if (AUTH_ENABLED) return;
+
+    (async () => {
+      const users = await refreshAllUsers();
+      if (!users || users.length === 0) {
+        setIsLoading(false);
+        return;
+      }
+      // Auto-select first admin, fallback to first active user
+      const activeUsers = users.filter(u => u.isActive);
+      const firstAdmin = activeUsers.find(u => u.appRole === 'admin' || u.appRole === 'super_admin');
+      setCurrentUserState(firstAdmin ?? activeUsers[0] ?? null);
+      setIsLoading(false);
+    })();
+  }, [refreshAllUsers]);
+
+  // ── Auth-enabled bootstrap ───────────────────────────────────
   const handleSession = useCallback(async (session: Session | null) => {
     if (!session?.user) {
       setCurrentUserState(null);
@@ -94,6 +114,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [refreshAllUsers]);
 
   useEffect(() => {
+    if (!AUTH_ENABLED) return;
+
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
         await handleSession(session);
@@ -112,12 +134,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const setDevUser = useCallback((user: User) => {
-    if (!DEV_MODE) return;
+    if (!DEV_MODE && AUTH_ENABLED) return;
     setCurrentUserState(user);
     setIsLoading(false);
   }, []);
 
   const signOut = useCallback(async () => {
+    if (!AUTH_ENABLED) {
+      // In demo mode, just clear the acting user
+      setCurrentUserState(null);
+      return;
+    }
     await supabase.auth.signOut();
     setCurrentUserState(null);
   }, []);
@@ -169,9 +196,14 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     // Refresh current user if we updated ourselves
     if (id === currentUser?.id) {
-      const session = (await supabase.auth.getSession()).data.session;
-      if (session) {
-        const refreshed = await fetchUserProfile(session.user.id);
+      if (AUTH_ENABLED) {
+        const session = (await supabase.auth.getSession()).data.session;
+        if (session) {
+          const refreshed = await fetchUserProfile(session.user.id);
+          if (refreshed) setCurrentUserState(refreshed);
+        }
+      } else {
+        const refreshed = await fetchUserProfile(id);
         if (refreshed) setCurrentUserState(refreshed);
       }
     }
