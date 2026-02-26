@@ -14,6 +14,7 @@ interface UserContextType {
   allUsersList: User[];
   appRole: AppRole | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   isLoading: boolean;
   isDevMode: boolean;
   addUser: (data: Omit<User, 'id'>) => Promise<void>;
@@ -203,7 +204,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     allUsers,
     allUsersList,
     appRole: currentUser?.appRole ?? null,
-    isAdmin: currentUser?.appRole === 'admin',
+    isAdmin: currentUser?.appRole === 'admin' || currentUser?.appRole === 'super_admin',
+    isSuperAdmin: currentUser?.appRole === 'super_admin',
     isLoading,
     isDevMode: DEV_MODE,
     addUser,
