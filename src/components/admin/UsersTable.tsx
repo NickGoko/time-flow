@@ -4,14 +4,45 @@ import { UserDialog } from '@/components/admin/UserDialog';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
+import { LogIn } from 'lucide-react';
 import type { User } from '@/types';
 
 export function UsersTable() {
-  const { allUsersList, currentUser, addUser, updateUser, toggleUserActive } = useCurrentUser();
+  const { allUsersList, currentUser, addUser, updateUser, toggleUserActive, isSuperAdmin } = useCurrentUser();
   const { getDepartmentById } = useReferenceData();
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
+  const [impersonating, setImpersonating] = useState<string | null>(null);
+
+  const handleImpersonate = useCallback(async (userId: string) => {
+    setImpersonating(userId);
+    try {
+      const { data, error } = await supabase.functions.invoke('admin-impersonate', {
+        body: { targetUserId: userId },
+      });
+
+      if (error) {
+        toast.error('Impersonation failed: ' + error.message);
+        return;
+      }
+      if (data?.error) {
+        toast.error('Impersonation failed: ' + data.error);
+        return;
+      }
+      if (data?.url) {
+        window.open(data.url, '_blank');
+        toast.success('Magic link opened in new tab. Use incognito for a clean session.');
+      }
+    } catch (err) {
+      toast.error('Impersonation failed: ' + String(err));
+    } finally {
+      setImpersonating(null);
+    }
+  }, []);
 
   const columns: CrudColumn<User>[] = [
     { key: 'name', header: 'Name' },
@@ -26,8 +57,8 @@ export function UsersTable() {
       key: 'appRole',
       header: 'App Role',
       render: (row) => (
-        <Badge variant={row.appRole === 'admin' ? 'default' : 'secondary'}>
-          {row.appRole === 'admin' ? 'Admin' : 'Employee'}
+        <Badge variant={row.appRole === 'admin' || row.appRole === 'super_admin' ? 'default' : 'secondary'}>
+          {row.appRole === 'super_admin' ? 'Super Admin' : row.appRole === 'admin' ? 'Admin' : 'Employee'}
         </Badge>
       ),
     },
@@ -36,6 +67,29 @@ export function UsersTable() {
       header: 'Weekly Hours',
       render: (row) => String(row.weeklyExpectedHours),
     },
+    ...(isSuperAdmin
+      ? [
+          {
+            key: 'id' as keyof User,
+            header: '',
+            render: (row: User) =>
+              row.id !== currentUser?.id ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  disabled={impersonating === row.id}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleImpersonate(row.id);
+                  }}
+                >
+                  <LogIn className="mr-1 h-3.5 w-3.5" />
+                  {impersonating === row.id ? 'Loading…' : 'Login as'}
+                </Button>
+              ) : null,
+          },
+        ]
+      : []),
   ];
 
   const handleAdd = useCallback(() => {
