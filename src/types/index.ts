@@ -22,6 +22,7 @@ export interface User {
   weeklyExpectedHours: number;
   isActive: boolean;
   avatarUrl?: string;
+  managedDepartments?: string[];
 }
 
 export interface Project {

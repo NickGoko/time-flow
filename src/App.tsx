@@ -13,6 +13,8 @@ import AdminReportsOverview from "./pages/AdminReportsOverview";
 import AdminReferenceData from "./pages/admin/AdminReferenceData";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminImportExport from "./pages/admin/AdminImportExport";
+import AdminRoles from "./pages/admin/AdminRoles";
+import AdminAudit from "./pages/admin/AdminAudit";
 import EmployeeInsights from "./pages/EmployeeInsights";
 import SignIn from "./pages/SignIn";
 import DevAccess from "./pages/DevAccess";
@@ -83,6 +85,8 @@ const App = () => (
                   <Route path="reference-data" element={<AdminReferenceData />} />
                   <Route path="users" element={<AdminUsers />} />
                   <Route path="import-export" element={<AdminImportExport />} />
+                  <Route path="roles" element={<AdminRoles />} />
+                  <Route path="audit" element={<AdminAudit />} />
                 </Route>
               </Route>
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

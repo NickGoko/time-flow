@@ -117,9 +117,20 @@ export function UsersTable() {
           : 'Employee';
         const isHighRole = ['admin', 'super_admin', 'leadership'].includes(row.appRole);
         return (
-          <Badge variant={isHighRole ? 'default' : row.appRole === 'hod' ? 'secondary' : 'outline'}>
-            {label}
-          </Badge>
+          <div className="flex flex-col gap-1">
+            <Badge variant={isHighRole ? 'default' : row.appRole === 'hod' ? 'secondary' : 'outline'}>
+              {label}
+            </Badge>
+            {row.appRole === 'hod' && row.managedDepartments && row.managedDepartments.length > 0 && (
+              <div className="flex flex-wrap gap-0.5">
+                {row.managedDepartments.map(dId => (
+                  <Badge key={dId} variant="outline" className="text-[10px] px-1 py-0">
+                    {getDepartmentById(dId)?.name ?? dId}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
         );
       },
     },
@@ -210,9 +221,10 @@ export function UsersTable() {
     await toggleUserActive(id);
   }, [currentUser, toggleUserActive]);
 
-  const handleSave = useCallback(async (data: Omit<User, 'id'>) => {
+  const handleSave = useCallback(async (data: Omit<User, 'id'> & { managedDepartments?: string[]; reason?: string }) => {
     if (editingUser) {
-      await updateUser(editingUser.id, data);
+      const { managedDepartments, reason, ...updates } = data;
+      await updateUser(editingUser.id, updates, reason, managedDepartments);
     } else {
       await addUser(data);
     }

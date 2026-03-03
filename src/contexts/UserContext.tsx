@@ -18,7 +18,7 @@ interface UserContextType {
   isLoading: boolean;
   isDevMode: boolean;
   addUser: (data: Omit<User, 'id'>) => Promise<void>;
-  updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => Promise<void>;
+  updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
   provisionInvite: (userId: string) => Promise<void>;
   sendReset: (userId: string) => Promise<void>;
@@ -58,13 +58,23 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   const refreshAllUsers = useCallback(async () => {
-    const { data: profiles } = await supabase.from('profiles').select('*');
-    const { data: roles } = await supabase.from('user_roles').select('user_id, role');
+    const [profilesRes, rolesRes, scopesRes] = await Promise.all([
+      supabase.from('profiles').select('*'),
+      supabase.from('user_roles').select('user_id, role'),
+      supabase.from('user_department_scope').select('user_id, department_id'),
+    ]);
 
+    const profiles = profilesRes.data;
     if (!profiles) return;
 
     const roleMap = new Map<string, AppRole>();
-    roles?.forEach(r => roleMap.set(r.user_id, r.role as AppRole));
+    rolesRes.data?.forEach(r => roleMap.set(r.user_id, r.role as AppRole));
+
+    const scopeMap = new Map<string, string[]>();
+    scopesRes.data?.forEach(s => {
+      if (!scopeMap.has(s.user_id)) scopeMap.set(s.user_id, []);
+      scopeMap.get(s.user_id)!.push(s.department_id);
+    });
 
     const users: User[] = profiles.map(p => ({
       id: p.id,
@@ -76,6 +86,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       weeklyExpectedHours: p.weekly_expected_hours,
       isActive: p.is_active,
       avatarUrl: p.avatar_url ?? undefined,
+      managedDepartments: scopeMap.get(p.id),
     }));
 
     setAllUsersList(users);
@@ -189,10 +200,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await refreshAllUsers();
   }, [refreshAllUsers, actingHeaders]);
 
-  const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>) => {
+  const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => {
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
       headers: actingHeaders,
-      body: { action: 'update', userId: id, updates },
+      body: { action: 'update', userId: id, updates, reason, managedDepartments },
     });
 
     if (error) {
