@@ -3,16 +3,23 @@ import { EditDialog } from '@/components/admin/AdminCrudTable';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { Loader2 } from 'lucide-react';
 import type { User, AppRole } from '@/types';
 
+interface UserDialogSaveData extends Omit<User, 'id'> {
+  managedDepartments?: string[];
+  reason?: string;
+}
+
 interface UserDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   user: User | null; // null = add mode
-  onSave: (data: Omit<User, 'id'>) => Promise<void>;
+  onSave: (data: UserDialogSaveData) => Promise<void>;
 }
 
 export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps) {
@@ -25,6 +32,8 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
   const [role, setRole] = useState('');
   const [appRole, setAppRole] = useState<AppRole>('employee');
   const [weeklyExpectedHours, setWeeklyExpectedHours] = useState(40);
+  const [managedDepartments, setManagedDepartments] = useState<string[]>([]);
+  const [reason, setReason] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -36,6 +45,8 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
         setRole(user.role);
         setAppRole(user.appRole);
         setWeeklyExpectedHours(user.weeklyExpectedHours);
+        setManagedDepartments(user.managedDepartments ?? []);
+        setReason('');
       } else {
         setName('');
         setEmail('');
@@ -43,12 +54,22 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
         setRole('');
         setAppRole('employee');
         setWeeklyExpectedHours(40);
+        setManagedDepartments([]);
+        setReason('');
       }
       setSaving(false);
     }
   }, [open, user]);
 
-  const canSave = name.trim() && email.trim() && departmentId && role.trim() && !saving;
+  const isEdit = !!user;
+  const reasonValid = !isEdit || reason.trim().length >= 5;
+  const canSave = name.trim() && email.trim() && departmentId && role.trim() && reasonValid && !saving;
+
+  const handleDeptToggle = (deptId: string, checked: boolean) => {
+    setManagedDepartments(prev =>
+      checked ? [...prev, deptId] : prev.filter(id => id !== deptId)
+    );
+  };
 
   const handleSave = async () => {
     if (!canSave) return;
@@ -62,6 +83,8 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
         appRole,
         weeklyExpectedHours,
         isActive: user?.isActive ?? true,
+        managedDepartments: appRole === 'hod' ? managedDepartments : undefined,
+        reason: isEdit ? reason.trim() : undefined,
       });
       onOpenChange(false);
     } catch {
@@ -120,6 +143,25 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
             </SelectContent>
           </Select>
         </div>
+
+        {appRole === 'hod' && (
+          <div className="space-y-2">
+            <Label>Managed Departments</Label>
+            <p className="text-xs text-muted-foreground">Select which departments this HOD can manage.</p>
+            <div className="grid grid-cols-2 gap-2 rounded-md border p-3">
+              {activeDepts.map(d => (
+                <label key={d.id} className="flex items-center gap-2 text-sm cursor-pointer">
+                  <Checkbox
+                    checked={managedDepartments.includes(d.id)}
+                    onCheckedChange={(checked) => handleDeptToggle(d.id, !!checked)}
+                  />
+                  {d.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="space-y-2">
           <Label>Weekly Expected Hours</Label>
           <Input
@@ -130,6 +172,22 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
             onChange={e => setWeeklyExpectedHours(Number(e.target.value))}
           />
         </div>
+
+        {isEdit && (
+          <div className="space-y-2">
+            <Label>Reason for change <span className="text-destructive">*</span></Label>
+            <Textarea
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Briefly explain the reason for this update (min 5 characters)"
+              rows={2}
+            />
+            {reason.length > 0 && reason.trim().length < 5 && (
+              <p className="text-xs text-destructive">Reason must be at least 5 characters.</p>
+            )}
+          </div>
+        )}
+
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
           <Button onClick={handleSave} disabled={!canSave}>

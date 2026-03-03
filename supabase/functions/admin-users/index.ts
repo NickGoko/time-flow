@@ -125,9 +125,22 @@ Deno.serve(async (req) => {
 
     // ── Action: update ───────────────────────────────────────────
     if (action === 'update') {
-      const { userId, updates } = body;
+      const { userId, updates, reason, managedDepartments } = body;
       if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
 
+      // Snapshot before state
+      const [beforeProfile, beforeRole, beforeScopes] = await Promise.all([
+        adminClient.from('profiles').select('*').eq('id', userId).single(),
+        adminClient.from('user_roles').select('role').eq('user_id', userId).single(),
+        adminClient.from('user_department_scope').select('department_id').eq('user_id', userId),
+      ]);
+      const beforeData = {
+        profile: beforeProfile.data,
+        role: beforeRole.data?.role,
+        managedDepartments: beforeScopes.data?.map((s: { department_id: string }) => s.department_id) ?? [],
+      };
+
+      // Apply profile updates
       const profileUpdates: Record<string, unknown> = {};
       if (updates.name !== undefined) profileUpdates.name = updates.name;
       if (updates.departmentId !== undefined) profileUpdates.department_id = updates.departmentId;
@@ -147,6 +160,42 @@ Deno.serve(async (req) => {
           .eq('user_id', userId);
         if (error) return jsonResponse({ error: error.message }, 400);
       }
+
+      // Update managed departments (delete+insert)
+      if (Array.isArray(managedDepartments)) {
+        await adminClient.from('user_department_scope').delete().eq('user_id', userId);
+        if (managedDepartments.length > 0) {
+          const scopeRows = managedDepartments.map((deptId: string) => ({
+            user_id: userId,
+            department_id: deptId,
+          }));
+          const { error: scopeErr } = await adminClient.from('user_department_scope').insert(scopeRows);
+          if (scopeErr) return jsonResponse({ error: 'Department scope update failed: ' + scopeErr.message }, 400);
+        }
+      }
+
+      // Snapshot after state
+      const [afterProfile, afterRole, afterScopes] = await Promise.all([
+        adminClient.from('profiles').select('*').eq('id', userId).single(),
+        adminClient.from('user_roles').select('role').eq('user_id', userId).single(),
+        adminClient.from('user_department_scope').select('department_id').eq('user_id', userId),
+      ]);
+      const afterData = {
+        profile: afterProfile.data,
+        role: afterRole.data?.role,
+        managedDepartments: afterScopes.data?.map((s: { department_id: string }) => s.department_id) ?? [],
+      };
+
+      // Write audit log
+      await adminClient.from('audit_log').insert({
+        actor_id: callerId,
+        action: 'user.update',
+        target_type: 'user',
+        target_id: userId,
+        reason: reason || null,
+        before_data: beforeData,
+        after_data: afterData,
+      });
 
       return jsonResponse({ success: true });
     }
