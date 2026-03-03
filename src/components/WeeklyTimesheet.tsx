@@ -33,7 +33,7 @@ import {
   BillableStatus,
   toTotalMinutes,
 } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, getProgressColor } from '@/lib/utils';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -93,7 +93,10 @@ export function WeeklyTimesheet() {
   }, [weekStart]);
 
   const expectedMinutes = WEEKLY_EXPECTED_HOURS * 60;
-  const progressPercent = Math.min(100, (weekSummary.totalMinutes / expectedMinutes) * 100);
+  const weekRawPercent = Math.round((weekSummary.totalMinutes / expectedMinutes) * 100);
+  const progressPercent = Math.min(100, weekRawPercent);
+  const weekOvertimeMinutes = Math.max(0, weekSummary.totalMinutes - expectedMinutes);
+  const weekColor = getProgressColor(weekRawPercent);
 
   const navigateWeek = (direction: number) => {
     const d = parseLocalDate(weekStart);
@@ -173,16 +176,16 @@ export function WeeklyTimesheet() {
           <div className="space-y-2 mb-6">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Weekly progress</span>
-              <span className="font-medium">
-                {formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h
+              <span className={cn("font-medium tabular-nums", weekColor.text)}>
+                {formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h ({weekRawPercent}%)
+                {weekOvertimeMinutes > 0 && (
+                  <span className="ml-1.5 text-success">· Overtime +{formatHours(weekOvertimeMinutes)}h</span>
+                )}
               </span>
             </div>
             <div className="h-2 bg-secondary rounded-full overflow-hidden">
               <div 
-                className={cn(
-                  "h-full rounded-full transition-all duration-500",
-                  progressPercent >= 100 ? "bg-success" : "bg-primary"
-                )}
+                className={cn("h-full rounded-full transition-all duration-500", weekColor.bg)}
                 style={{ width: `${progressPercent}%` }}
               />
             </div>
@@ -225,18 +228,28 @@ export function WeeklyTimesheet() {
                   )}>
                     {parseLocalDate(day.date).getDate()}
                   </span>
-                  <div className={cn(
-                    "mt-1 sm:mt-2 text-base sm:text-lg font-semibold tabular-nums",
-                    !hasEntries && "text-muted-foreground/50",
-                    hasEntries && isMet && !isWeekend && "text-success",
-                    hasEntries && !isMet && !isWeekend && "text-foreground",
-                    isAtMax && "text-warning"
-                  )}>
-                    {formatHours(day.totalMinutes)}h
-                  </div>
-                  {isAtMax && (
-                    <span className="text-[10px] text-warning mt-0.5">Max</span>
-                  )}
+                  {(() => {
+                    const dayPct = Math.round((day.totalMinutes / dayTarget) * 100);
+                    const dayColor = getProgressColor(dayPct);
+                    const dayOT = Math.max(0, day.totalMinutes - dayTarget);
+                    return (
+                      <>
+                        <div className={cn(
+                          "mt-1 sm:mt-2 text-base sm:text-lg font-semibold tabular-nums",
+                          !hasEntries ? "text-muted-foreground/50" : dayColor.text,
+                        )}>
+                          {formatHours(day.totalMinutes)}h
+                        </div>
+                        <span className="text-[10px] text-muted-foreground">{HOURS_PER_DAY_TARGET}h</span>
+                        {dayOT > 0 && (
+                          <span className="text-[10px] text-success mt-0.5">+{formatHours(dayOT)}h OT</span>
+                        )}
+                        {isAtMax && (
+                          <span className="text-[10px] text-warning mt-0.5">Max</span>
+                        )}
+                      </>
+                    );
+                  })()}
                 </button>
               );
             })}
@@ -273,9 +286,16 @@ export function WeeklyTimesheet() {
                     month: 'long',
                   })}
                 </CardTitle>
-                <span className="text-xs sm:text-sm text-muted-foreground tabular-nums">
-                  {formatHours(selectedDayData.totalMinutes)}h / {dayProgressPercent}%
-                </span>
+                {(() => {
+                  const dayColor = getProgressColor(dayProgressPercent);
+                  const dayOT = Math.max(0, selectedDayData.totalMinutes - dayTargetMinutes);
+                  return (
+                    <span className={cn("text-xs sm:text-sm tabular-nums font-medium", dayColor.text)}>
+                      {formatHours(selectedDayData.totalMinutes)}h / {HOURS_PER_DAY_TARGET}h ({dayProgressPercent}%)
+                      {dayOT > 0 && <span className="ml-1 text-success">· Overtime +{formatHours(dayOT)}h</span>}
+                    </span>
+                  );
+                })()}
               </div>
             </div>
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">

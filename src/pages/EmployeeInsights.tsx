@@ -19,7 +19,7 @@ import {
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
 } from '@/types';
-import { cn } from '@/lib/utils';
+import { cn, getProgressColor } from '@/lib/utils';
 
 const EmployeeInsights = () => {
   const { currentUser } = useAuthenticatedUser();
@@ -66,7 +66,7 @@ const EmployeeInsights = () => {
   const weekSummary = getWeekSummary(currentUser.id, currentWeekStart);
   const weekSubmitted = isWeekSubmitted(currentUser.id, currentWeekStart);
   const expectedWeekMinutes = WEEKLY_EXPECTED_HOURS * 60;
-  const weekProgress = Math.min(100, Math.round((weekSummary.totalMinutes / expectedWeekMinutes) * 100));
+  const weekProgress = Math.round((weekSummary.totalMinutes / expectedWeekMinutes) * 100);
 
   const topProjects = useMemo(() => {
     const projectTotals: Record<string, number> = {};
@@ -126,23 +126,31 @@ const EmployeeInsights = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-              <div>
-                <span className="text-3xl font-bold tabular-nums">{formatHours(todayMinutes)}h</span>
-                <span className="text-muted-foreground text-sm ml-2">/ {HOURS_PER_DAY_TARGET}h target</span>
-              </div>
-              <div className="flex gap-4 text-sm text-muted-foreground">
-                <span>Billable: {formatHours(todayBillable)}h</span>
-                <span>Maybe: {formatHours(todayMaybe)}h</span>
-                <span>Non-billable: {formatHours(todayNotBillable)}h</span>
-              </div>
-              {todayMissing > 0 && (
-                <div className="flex items-center gap-1.5 text-sm text-warning">
-                  <AlertCircle className="h-3.5 w-3.5" />
-                  {formatHours(todayMissing)}h remaining
+            {(() => {
+              const todayPct = Math.round((todayMinutes / todayTarget) * 100);
+              const todayColor = getProgressColor(todayPct);
+              const todayOT = Math.max(0, todayMinutes - todayTarget);
+              return (
+                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
+                  <div>
+                    <span className={cn("text-3xl font-bold tabular-nums", todayColor.text)}>{formatHours(todayMinutes)}h</span>
+                    <span className="text-muted-foreground text-sm ml-2">/ {HOURS_PER_DAY_TARGET}h ({todayPct}%)</span>
+                    {todayOT > 0 && <span className="text-success text-sm ml-1.5">· Overtime +{formatHours(todayOT)}h</span>}
+                  </div>
+                  <div className="flex gap-4 text-sm text-muted-foreground">
+                    <span>Billable: {formatHours(todayBillable)}h</span>
+                    <span>Maybe: {formatHours(todayMaybe)}h</span>
+                    <span>Non-billable: {formatHours(todayNotBillable)}h</span>
+                  </div>
+                  {todayMissing > 0 && (
+                    <div className="flex items-center gap-1.5 text-sm text-warning">
+                      <AlertCircle className="h-3.5 w-3.5" />
+                      {formatHours(todayMissing)}h remaining
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              );
+            })()}
           </CardContent>
         </Card>
 
@@ -159,13 +167,22 @@ const EmployeeInsights = () => {
             </div>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Weekly progress</span>
-                <span className="font-medium tabular-nums">{formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h</span>
-              </div>
-              <Progress value={weekProgress} className="h-2" />
-            </div>
+            {(() => {
+              const wkColor = getProgressColor(weekProgress);
+              const wkOT = Math.max(0, weekSummary.totalMinutes - expectedWeekMinutes);
+              return (
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-muted-foreground">Weekly progress</span>
+                    <span className={cn("font-medium tabular-nums", wkColor.text)}>
+                      {formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h ({weekProgress}%)
+                      {wkOT > 0 && <span className="ml-1.5 text-success">· Overtime +{formatHours(wkOT)}h</span>}
+                    </span>
+                  </div>
+                  <Progress value={Math.min(100, weekProgress)} className="h-2" />
+                </div>
+              );
+            })()}
 
             {topProjects.length > 0 && (
               <div>
