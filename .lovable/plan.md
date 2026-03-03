@@ -1,63 +1,129 @@
 
 
-# Brick 2: Admin RBAC UI — Implementation Plan
+# Combined Plan: Bricks 4, 5, and 6
 
-## Summary
+---
 
-Create two new admin pages (Roles matrix, Audit log) and enhance the UserDialog with managed departments multi-select and mandatory audit reason field. Total: **8 files** (within limit).
+## BRICK 4: Progress Labels + Overtime Display
 
-## Files
+### A) Where progress is computed today
 
-| # | File | Action | Change |
+| Location | File | Lines | Current Display |
 |---|---|---|---|
-| 1 | `src/pages/admin/AdminRoles.tsx` | **New** | Read-only role × permission matrix. Fetches `permissions` and `role_permissions` tables. Renders a table with roles as columns and permissions as rows, checkmarks where mapped. super_admin shown as "all". |
-| 2 | `src/pages/admin/AdminAudit.tsx` | **New** | Filterable audit log viewer. Fetches `audit_log` joined with `profiles` for actor name. Filters: action type, date range, search by target. Shows actor, action, target, reason, timestamp, expandable before/after JSON. |
-| 3 | `src/components/admin/UserDialog.tsx` | **Edit** | Add: (a) multi-select checkboxes for managed departments (visible when appRole=hod), (b) textarea "Reason for change" (required on edit, hidden on add). Pass `managedDepartments` and `reason` through `onSave`. |
-| 4 | `src/components/admin/UsersTable.tsx` | **Edit** | Update `handleSave` to pass `reason` and `managedDepartments` to `updateUser`. Fetch and display managed departments for HOD users as sub-badges. |
-| 5 | `src/contexts/UserContext.tsx` | **Edit** | Update `updateUser` signature to accept `reason` and `managedDepartments`. Pass both to edge function. Fetch `user_department_scope` in `refreshAllUsers` and attach `managedDepartments` to User objects. |
-| 6 | `src/types/index.ts` | **Edit** | Add `managedDepartments?: string[]` to `User` interface. |
-| 7 | `supabase/functions/admin-users/index.ts` | **Edit** | In `update` action: accept `reason` and `managedDepartments`. Snapshot before/after state. Write to `audit_log`. Upsert `user_department_scope` (delete+insert pattern). |
-| 8 | `src/App.tsx` | **Edit** | Add routes: `/admin/roles` → `AdminRoles`, `/admin/audit` → `AdminAudit`. |
+| Weekly progress bar | `WeeklyTimesheet.tsx` | 95-96, 174-178 | `{hours}h / 40h` |
+| Daily tiles | `WeeklyTimesheet.tsx` | 228-236 | `{hours}h` only |
+| Selected day header | `WeeklyTimesheet.tsx` | 276-278 | `{hours}h / {percent}%` |
+| Grid sticky header | `DailyGridEntry.tsx` | 236-238 | `Logged: {hours}h / 10h` |
+| Employee insights (today) | `EmployeeInsights.tsx` | 115-118 | `{hours}h / 8h target` |
+| Employee insights (week) | `EmployeeInsights.tsx` | 135-138 | `{hours}h / 40h` |
 
-**TopBar.tsx** already has admin nav links for Dashboard, Reports, Reference Data, Users. Adding Roles and Audit links would be a 9th file. Instead, these pages are accessible from the Users page or via direct URL. If needed, TopBar can be updated in a follow-up.
+### B) Plan (3 files)
 
-## Key Details
+1. **`src/components/WeeklyTimesheet.tsx`**:
+   - Weekly bar: change label to `Xh / 40h (Y%)`. If >100%, clamp bar at 100%, append `Overtime +Zh`.
+   - Daily tiles: change to `Xh / 8h`. If >=100%, show green check icon. If >100%, show `+Zh OT` below.
+   - Selected day header: `Xh / 8h (Y%)`, overtime label if >100%.
 
-### AdminRoles page
-- Reads `permissions` and `role_permissions` via supabase client (both have public SELECT)
-- Builds a matrix: rows = permissions (sorted by id), columns = employee, hod, leadership, admin, super_admin
-- super_admin column shows all checkmarks (inherits everything per `has_permission` function)
-- Read-only — no edit capability in this brick
+2. **`src/components/DailyGridEntry.tsx`**:
+   - Sticky header: `Logged: Xh / 8h (Y%)` with overtime indicator.
 
-### AdminAudit page
-- Queries `audit_log` ordered by `created_at DESC`, limited to 100
-- Joins `profiles` for actor name display
-- Filters: text search on action/target_type/reason, date picker for range
-- Each row expandable to show `before_data` / `after_data` JSON diffs
+3. **`src/pages/EmployeeInsights.tsx`**:
+   - Today card: `Xh / 8h (Y%)` with overtime if applicable.
+   - Week card: same pattern.
 
-### UserDialog changes
-- When `appRole === 'hod'`, show a "Managed Departments" section with checkboxes for each active department
-- On edit mode, pre-populate from `user.managedDepartments`
-- "Reason for change" textarea (required when editing, min 5 chars)
-- `onSave` signature changes to include `managedDepartments` and `reason`
+### C) Test script
+- 0h logged: `0h / 8h (0%)`
+- 4h logged: `4h / 8h (50%)`
+- 8h logged: `8h / 8h (100%)`
+- 10h logged (travel): `10h / 8h (125%) · Overtime +2h`
+- Weekly 45h: `45h / 40h (113%) · Overtime +5h`
 
-### Edge Function audit logging
-- In `update` action: fetch current profile + role + scopes as `before_data`
-- After applying changes: fetch new state as `after_data`
-- Insert into `audit_log`: `{ actor_id: callerId, action: 'user.update', target_type: 'user', target_id: userId, reason, before_data, after_data }`
-- `audit_log` has no INSERT RLS policy (blocked for regular users), so the edge function uses the service role client which bypasses RLS
+---
 
-### Data flow for managedDepartments
-- `UserContext.refreshAllUsers`: also fetches `user_department_scope`, groups by `user_id`, attaches as `managedDepartments: string[]` on each User
-- `UserDialog`: reads from `user.managedDepartments` on open
-- On save: passes array to edge function which does delete+insert pattern
+## BRICK 5: Traffic Light Colours
 
-## Test Steps
+### A) Progress bar component
 
-1. Navigate to `/admin/roles` — see a matrix of 16 permissions × 5 roles with checkmarks
-2. Navigate to `/admin/audit` — see audit log entries (initially from import actions if any)
-3. Edit a user, change their role to HOD — department checkboxes appear, select 2 departments, enter reason "Promoted to HOD", save
-4. Check `/admin/audit` — new entry shows with reason, before/after snapshots
-5. Re-edit same user — managed departments pre-populated correctly
-6. Try saving without reason on edit — validation prevents it
+The progress bar is NOT the shadcn `<Progress>` component in these views. It's a custom `div` with inline width in `WeeklyTimesheet.tsx` lines 180-188. Daily tiles use text color classes (lines 228-234).
+
+### B) Plan (3 files, subset of Brick 4 files)
+
+1. **`src/lib/utils.ts`**: Add helper `getProgressColor(percent: number): string` returning:
+   - `<75` → `bg-destructive` (red) / `text-destructive`
+   - `75–90` → `bg-warning` (yellow) / `text-warning`  
+   - `90–100` → `bg-success` (green) / `text-success`
+   - `>100` → `bg-success` (green, overtime is fine once target met)
+
+2. **`src/components/WeeklyTimesheet.tsx`**: Apply to weekly bar + daily tile text colors + day header.
+
+3. **`src/components/DailyGridEntry.tsx`**: Apply to grid header progress text.
+
+4. **`src/pages/EmployeeInsights.tsx`**: Apply to today/week progress.
+
+### C) Test script
+- 50% (4h/8h): red bar + red text
+- 80% (6.4h/8h): yellow bar + yellow text
+- 95% (7.6h/8h): green bar + green text
+- 112% (9h/8h): green bar, "Overtime +1h"
+
+---
+
+## BRICK 6: Department Filtering Bug + L&D
+
+### A) Root cause hypothesis
+
+The `getGroupedWorkstreams` function in `ReferenceDataContext.tsx` (lines 152-181) correctly filters external projects via `project_department_access`. However, the **data itself** is the issue:
+
+Current `project_department_access` only grants external project access to: `dept-bd`, `dept-consulting`, `dept-operations` (plus `proj-leave` for all).
+
+**Missing access**: departments like `dept-it`, `dept-finance`, `dept-hr`, `dept-comms`, `dept-mel` have NO access to external projects (except Leave). If these departments should support external projects (e.g., IT supporting Flagship), entries are missing from `project_department_access`.
+
+The bug "IT only sees Impact external project options" likely means an IT user was previously assigned to `dept-consulting` or there's a stale state. The fix is to ensure correct `project_department_access` rows exist.
+
+For `getPhasesForProject` (line 135): when an external project is selected, it returns ALL `EXTERNAL_PHASE_IDS` phases — this is correct because external projects share the same phase set. Internal projects correctly scope to department-specific work areas.
+
+### B) Exact files involved
+
+| # | File | Role |
+|---|---|---|
+| 1 | `src/contexts/ReferenceDataContext.tsx` | `getGroupedWorkstreams`, `getPhasesForProject` — filtering logic |
+| 2 | DB: `project_department_access` | Access control data |
+| 3 | DB: `projects`, `internal_work_areas` | Missing L&D entries |
+
+### C) Plan (≤4 files + SQL migration)
+
+1. **SQL migration**: Insert missing `project_department_access` rows so all departments can access support-type external projects where appropriate. Add L&D-related reference data:
+   - If L&D is a separate concern, add work areas under existing departments (e.g., `iwa-hr-10` "L&D coordination" under `dept-hr`, or create a cross-cutting L&D phase).
+   - Based on existing data, HR already has `iwa-hr-1` "L&D progress management". The gap may be L&D activity types or work areas for other departments.
+
+2. **`src/contexts/ReferenceDataContext.tsx`**: No code change needed if the data fix resolves it. However, add a safety improvement: if a user's `departmentId` is empty/null, show all external projects (graceful fallback instead of showing nothing).
+
+3. **Verify `getPhasesForProject`** handles the `internal_department` path correctly — it does, via work area → phase mapping.
+
+### D) Test script
+- Login as IT user (`dept-it`) → see IT internal workstream + Leave + any newly-granted external projects
+- Login as Finance user (`dept-finance`) → see Finance internal workstream + Leave + any newly-granted external projects
+- Select IT internal workstream → see only IT work areas (User support, Laptop servicing, etc.)
+- Select an external project → see generic phases (Inception, Recruitment, Workshops, etc.)
+- Check L&D options appear where added
+
+---
+
+## Combined File Count
+
+| # | File | Bricks |
+|---|---|---|
+| 1 | `src/lib/utils.ts` | 5 |
+| 2 | `src/components/WeeklyTimesheet.tsx` | 4, 5 |
+| 3 | `src/components/DailyGridEntry.tsx` | 4, 5 |
+| 4 | `src/pages/EmployeeInsights.tsx` | 4, 5 |
+| 5 | `src/contexts/ReferenceDataContext.tsx` | 6 |
+| 6 | SQL migration | 6 |
+
+Total: **5 code files + 1 migration** (within all brick limits).
+
+## Implementation Order
+1. Brick 5 first (add `getProgressColor` util — needed by Brick 4)
+2. Brick 4 (progress labels + overtime using the color helper)
+3. Brick 6 (data fix via migration + optional context safety)
 
