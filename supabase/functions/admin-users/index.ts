@@ -272,6 +272,160 @@ Deno.serve(async (req) => {
       return jsonResponse({ created, updated, skipped, errors });
     }
 
+    // ── Action: provision-invite ───────────────────────────────
+    if (action === 'provision-invite') {
+      const { userId } = body;
+      if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
+
+      // Look up profile
+      const { data: profile } = await adminClient
+        .from('profiles')
+        .select('id, email, name')
+        .eq('id', userId)
+        .single();
+
+      if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
+
+      // Check if auth user already exists for this email
+      const { data: listData } = await adminClient.auth.admin.listUsers();
+      const existingAuthUser = listData?.users?.find(
+        (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
+      );
+
+      if (existingAuthUser) {
+        // Sync profile.id if it differs
+        if (existingAuthUser.id !== profile.id) {
+          await adminClient
+            .from('profiles')
+            .update({ id: existingAuthUser.id })
+            .eq('id', profile.id);
+          // Also update user_roles
+          await adminClient
+            .from('user_roles')
+            .update({ user_id: existingAuthUser.id })
+            .eq('user_id', profile.id);
+        }
+
+        // Re-invite via generateLink
+        const { error: linkErr } = await adminClient.auth.admin.generateLink({
+          type: 'invite',
+          email: profile.email,
+        });
+        if (linkErr) return jsonResponse({ error: linkErr.message }, 400);
+      } else {
+        // Create new auth user via invite
+        const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
+          profile.email,
+          { data: { full_name: profile.name } }
+        );
+        if (inviteErr) return jsonResponse({ error: inviteErr.message }, 400);
+
+        // Sync profile.id to match the new auth user id
+        const newAuthId = inviteData.user.id;
+        if (newAuthId !== profile.id) {
+          await adminClient
+            .from('profiles')
+            .update({ id: newAuthId })
+            .eq('id', profile.id);
+          await adminClient
+            .from('user_roles')
+            .update({ user_id: newAuthId })
+            .eq('user_id', profile.id);
+        }
+      }
+
+      return jsonResponse({ success: true });
+    }
+
+    // ── Action: send-reset ──────────────────────────────────────
+    if (action === 'send-reset') {
+      const { userId } = body;
+      if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
+
+      const { data: profile } = await adminClient
+        .from('profiles')
+        .select('email')
+        .eq('id', userId)
+        .single();
+
+      if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
+
+      // Check auth user exists
+      const { data: listData } = await adminClient.auth.admin.listUsers();
+      const authUser = listData?.users?.find(
+        (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
+      );
+
+      if (!authUser) {
+        return jsonResponse({ error: 'No auth account exists for this user. Send an invite first.' }, 400);
+      }
+
+      const { error: resetErr } = await adminClient.auth.admin.generateLink({
+        type: 'recovery',
+        email: profile.email,
+      });
+
+      if (resetErr) return jsonResponse({ error: resetErr.message }, 400);
+
+      return jsonResponse({ success: true });
+    }
+
+    // ── Action: create-with-password (super_admin only) ─────────
+    if (action === 'create-with-password') {
+      // Require super_admin
+      if (roleRow.role !== 'super_admin') {
+        return jsonResponse({ error: 'Forbidden: super_admin role required' }, 403);
+      }
+
+      const { userId, password } = body;
+      if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
+      if (!password || password.length < 8) {
+        return jsonResponse({ error: 'Password must be at least 8 characters' }, 400);
+      }
+
+      const { data: profile } = await adminClient
+        .from('profiles')
+        .select('id, email, name')
+        .eq('id', userId)
+        .single();
+
+      if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
+
+      // Check if auth user already exists
+      const { data: listData } = await adminClient.auth.admin.listUsers();
+      const existingAuthUser = listData?.users?.find(
+        (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
+      );
+
+      if (existingAuthUser) {
+        return jsonResponse({ error: 'Auth account already exists for this email. Use send-reset instead.' }, 400);
+      }
+
+      const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
+        email: profile.email,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: profile.name },
+      });
+
+      if (createErr) return jsonResponse({ error: createErr.message }, 400);
+
+      // Sync profile.id
+      const newAuthId = createData.user.id;
+      if (newAuthId !== profile.id) {
+        await adminClient
+          .from('profiles')
+          .update({ id: newAuthId })
+          .eq('id', profile.id);
+        await adminClient
+          .from('user_roles')
+          .update({ user_id: newAuthId })
+          .eq('user_id', profile.id);
+      }
+
+      return jsonResponse({ success: true });
+    }
+
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
