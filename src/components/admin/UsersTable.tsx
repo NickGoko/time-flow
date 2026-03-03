@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { UserDialog } from '@/components/admin/UserDialog';
 import { useCurrentUser } from '@/contexts/UserContext';
@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogIn } from 'lucide-react';
+import { AUTH_ENABLED } from '@/lib/devMode';
 import type { User } from '@/types';
 
 export function UsersTable() {
@@ -18,10 +19,18 @@ export function UsersTable() {
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [impersonating, setImpersonating] = useState<string | null>(null);
 
+  const actingHeaders = useMemo(() => {
+    if (!AUTH_ENABLED && currentUser) {
+      return { 'x-acting-user-id': currentUser.id };
+    }
+    return {};
+  }, [currentUser]);
+
   const handleImpersonate = useCallback(async (userId: string) => {
     setImpersonating(userId);
     try {
       const { data, error } = await supabase.functions.invoke('admin-impersonate', {
+        headers: actingHeaders,
         body: { targetUserId: userId },
       });
 
@@ -42,7 +51,7 @@ export function UsersTable() {
     } finally {
       setImpersonating(null);
     }
-  }, []);
+  }, [actingHeaders]);
 
   const columns: CrudColumn<User>[] = [
     { key: 'name', header: 'Name' },
