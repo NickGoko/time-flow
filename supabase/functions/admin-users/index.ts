@@ -263,6 +263,26 @@ Deno.serve(async (req) => {
           if (roleUpsertErr) {
             errors.push(`Role upsert failed for ${email}: ${roleUpsertErr.message}`);
           }
+
+          // 5. Upsert user_department_scope (managed departments for HODs)
+          if (Array.isArray(u.managedDepartments) && u.managedDepartments.length > 0) {
+            // Delete existing scopes then insert new ones
+            await adminClient
+              .from('user_department_scope')
+              .delete()
+              .eq('user_id', profileId);
+
+            const scopeRows = u.managedDepartments.map((deptId: string) => ({
+              user_id: profileId,
+              department_id: deptId,
+            }));
+            const { error: scopeErr } = await adminClient
+              .from('user_department_scope')
+              .insert(scopeRows);
+            if (scopeErr) {
+              errors.push(`Department scope failed for ${email}: ${scopeErr.message}`);
+            }
+          }
         } catch (rowErr) {
           errors.push(`Unexpected error: ${String(rowErr)}`);
           skipped++;
