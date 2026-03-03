@@ -26,15 +26,16 @@ import {
   MAX_PAST_DAYS,
   toTotalMinutes,
   formatHours,
+  isTravelExempt,
+  LEAVE_PROJECT_ID,
+  ABSENCE_PHASE_ID,
+  LEAVE_DAY_ACTIVITY_ID,
 } from '@/types';
 import { parseLocalDate } from '@/data/seed';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { Lock } from 'lucide-react';
-
-const LEAVE_PROJECT_ID = 'proj-leave';
-const ABSENCE_PHASE_ID = 'phase-absence';
 
 interface GridRow {
   id: string;
@@ -71,13 +72,14 @@ interface DailyGridEntryProps {
 
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
   const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
   const entries = getOwnEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
   const existingMinutes = getDailyTotalMinutes(currentUser.id, selectedDate);
+  const existingNonTravelMinutes = getDailyNonTravelMinutes(currentUser.id, selectedDate);
 
   const grouped = useMemo(() =>
     getGroupedWorkstreams(currentUser.departmentId, currentUser.id, entries),
@@ -109,7 +111,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
         updated.activityTypeId = '';
         if (value === LEAVE_PROJECT_ID) {
           updated.phaseId = ABSENCE_PHASE_ID;
-          updated.activityTypeId = '';
+          updated.activityTypeId = LEAVE_DAY_ACTIVITY_ID;
           updated.hours = 8;
           updated.minutes = 0;
           updated.billableStatus = 'not_billable';
@@ -173,15 +175,18 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       return { ...row, errors };
     });
 
-    // Daily cap check
-    const gridTotalMinutes = nonEmptyRows.reduce(
-      (sum, r) => sum + toTotalMinutes(r.hours, r.minutes), 0
-    );
-    if (existingMinutes + gridTotalMinutes > MAX_DAILY_MINUTES) {
+    // Travel-aware daily cap check
+    const newNonTravelMinutes = nonEmptyRows
+      .filter(r => !isTravelExempt(r.activityTypeId))
+      .reduce((sum, r) => sum + toTotalMinutes(r.hours, r.minutes), 0);
+
+    if (existingNonTravelMinutes + newNonTravelMinutes > MAX_DAILY_MINUTES) {
       hasErrors = true;
+      const projectedNonTravel = existingNonTravelMinutes + newNonTravelMinutes;
       setGlobalError(
-        `Daily total would be ${formatHours(existingMinutes + gridTotalMinutes)}h, ` +
-        `exceeding the ${MAX_DAILY_HOURS}h cap. You have ${formatHours(MAX_DAILY_MINUTES - existingMinutes)}h remaining.`
+        `Non-travel daily total would be ${formatHours(projectedNonTravel)}h, ` +
+        `exceeding the ${MAX_DAILY_HOURS}h cap. You have ${formatHours(MAX_DAILY_MINUTES - existingNonTravelMinutes)}h remaining. ` +
+        `Only Travel entries may exceed this limit.`
       );
     }
 
@@ -296,7 +301,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
   return (
     <div className={`p-4 rounded-lg border ${hasErrors ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card'} space-y-3`}>
       <div className="flex items-center justify-between">
-        <span className="text-xs font-medium text-muted-foreground">Row {index + 1}</span>
+        <span className="text-xs font-medium text-muted-foreground">Entry {index + 1}</span>
         {canRemove && (
           <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-destructive" onClick={() => onRemove(row.id)}>
             <Trash2 className="h-3.5 w-3.5" />
@@ -377,28 +382,30 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
           {row.errors.taskDescription && <p className="text-xs text-destructive mt-1">{row.errors.taskDescription}</p>}
         </div>
 
-        {/* Deliverable Type */}
-        <div>
-          <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
-            <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
-              <SelectValue placeholder="Deliverable *" />
-            </SelectTrigger>
-            <SelectContent>
-              {DELIVERABLE_TYPES.map(t => (
-                <SelectItem key={t} value={t}>{getDeliverableLabel(t)}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {row.errors.deliverableType && <p className="text-xs text-destructive mt-1">{row.errors.deliverableType}</p>}
-        </div>
-
-        {/* Deliverable Description (optional) */}
-        <div className="sm:col-span-2 lg:col-span-3">
-          <Input
-            placeholder="Deliverable description (optional)"
-            value={row.deliverableDescription}
-            onChange={e => onUpdate(row.id, 'deliverableDescription', e.target.value)}
-          />
+        {/* Deliverable Type + Description grouped */}
+        <div className="sm:col-span-2 lg:col-span-3 p-3 rounded-md border border-border/50 bg-muted/30 space-y-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
+                <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
+                  <SelectValue placeholder="Deliverable *" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DELIVERABLE_TYPES.map(t => (
+                    <SelectItem key={t} value={t}>{getDeliverableLabel(t)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {row.errors.deliverableType && <p className="text-xs text-destructive mt-1">{row.errors.deliverableType}</p>}
+            </div>
+            <div>
+              <Input
+                placeholder="Deliverable description (optional)"
+                value={row.deliverableDescription}
+                onChange={e => onUpdate(row.id, 'deliverableDescription', e.target.value)}
+              />
+            </div>
+          </div>
         </div>
 
         {/* Hours */}

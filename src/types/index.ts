@@ -223,3 +223,19 @@ export function getWorkstreamTypeLabel(type: WorkstreamType): string {
 
 export const HOUR_OPTIONS = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] as const;
 export const MINUTE_OPTIONS = [0, 15, 30, 45] as const;
+
+// Activity type IDs that are exempt from the daily 10h cap
+export const TRAVEL_EXEMPT_ACTIVITY_IDS = new Set([
+  'act-admin-travel',   // Travel/logistics
+  'act-es-transport',   // Transport (Entrepreneur support)
+]);
+
+export function isTravelExempt(activityTypeId?: string): boolean {
+  return !!activityTypeId && TRAVEL_EXEMPT_ACTIVITY_IDS.has(activityTypeId);
+}
+
+// Leave/Absence constants
+export const LEAVE_PROJECT_ID = 'proj-leave';
+export const ABSENCE_PHASE_ID = 'phase-absence';
+export const LEAVE_DAY_ACTIVITY_ID = 'act-leave-day';
+export const PUBLIC_HOLIDAY_ACTIVITY_ID = 'act-public-holiday';

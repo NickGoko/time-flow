@@ -42,12 +42,13 @@ import {
   MAX_PAST_DAYS,
   toTotalMinutes,
   formatHours,
+  isTravelExempt,
+  LEAVE_PROJECT_ID,
+  ABSENCE_PHASE_ID,
+  LEAVE_DAY_ACTIVITY_ID,
 } from '@/types';
 import { parseLocalDate } from '@/data/seed';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
-
-const LEAVE_PROJECT_ID = 'proj-leave';
-const ABSENCE_PHASE_ID = 'phase-absence';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { cn } from '@/lib/utils';
@@ -60,7 +61,7 @@ interface TimeEntryFormProps {
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, getOwnEntries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
   const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
   const entries = getOwnEntries();
   const [open, setOpen] = useState(false);
@@ -122,7 +123,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     // Auto-fill for leave project
     if (value === LEAVE_PROJECT_ID) {
       setPhaseId(ABSENCE_PHASE_ID);
-      setActivityTypeId('');
+      setActivityTypeId(LEAVE_DAY_ACTIVITY_ID);
       setHours(8);
       setMinutes(0);
       setBillableStatus('not_billable');
@@ -149,12 +150,16 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     setValidationError(null);
   };
 
-  // Check if adding this entry would exceed daily cap
+  // Check if adding this entry would exceed daily cap (travel-aware)
   const entryMinutes = toTotalMinutes(hours, minutes);
-  const currentDailyTotal = getDailyTotalMinutes(currentUser.id, format(date, 'yyyy-MM-dd'));
-  const projectedTotal = currentDailyTotal + entryMinutes;
-  const wouldExceedCap = projectedTotal > MAX_DAILY_MINUTES;
-  const remainingMinutes = MAX_DAILY_MINUTES - currentDailyTotal;
+  const dateStr = format(date, 'yyyy-MM-dd');
+  const currentDailyTotal = getDailyTotalMinutes(currentUser.id, dateStr);
+  const travelExempt = isTravelExempt(activityTypeId);
+  
+  // For non-travel entries: check non-travel existing + this entry against cap
+  const currentNonTravelTotal = getDailyNonTravelMinutes(currentUser.id, dateStr);
+  const wouldExceedCap = !travelExempt && (currentNonTravelTotal + entryMinutes > MAX_DAILY_MINUTES);
+  const remainingMinutes = MAX_DAILY_MINUTES - currentNonTravelTotal;
 
   const isFormValid = 
     projectId && 
@@ -169,7 +174,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     e.preventDefault();
     
     if (wouldExceedCap) {
-      setValidationError(`Daily total can't exceed ${MAX_DAILY_HOURS} hours. You have ${formatHours(remainingMinutes)}h remaining.`);
+      setValidationError(`Daily non-travel total can't exceed ${MAX_DAILY_HOURS}h. You have ${formatHours(remainingMinutes)}h remaining. Only Travel entries may exceed this limit.`);
       return;
     }
     
@@ -427,12 +432,13 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
               {/* Daily total info */}
               <p className="text-xs text-muted-foreground">
                 Already logged today: {formatHours(currentDailyTotal)}h of {MAX_DAILY_HOURS}h maximum
+                {travelExempt && ' (Travel — exempt from cap)'}
               </p>
               
               {/* Validation error */}
               {(wouldExceedCap || validationError) && (
                 <p className="text-sm text-destructive font-medium">
-                  {validationError || `Daily total can't exceed ${MAX_DAILY_HOURS} hours.`}
+                  {validationError || `Daily non-travel total can't exceed ${MAX_DAILY_HOURS}h. Only Travel entries may exceed this limit.`}
                 </p>
               )}
             </div>
@@ -481,9 +487,6 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
             <Button type="submit" disabled={!isFormValid}>
               Save entry
             </Button>

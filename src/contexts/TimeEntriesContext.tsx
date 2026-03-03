@@ -7,6 +7,7 @@ import {
   WeekSummary, 
   DailyTotal,
   toTotalMinutes,
+  isTravelExempt,
 } from '@/types';
 import { 
   timeEntries as seedTimeEntries, 
@@ -45,6 +46,7 @@ interface TimeEntriesContextType {
   getWeekSummary: (userId: string, weekStart: string) => WeekSummary;
   getDailyTotals: (userId: string, weekStart: string) => DailyTotal[];
   getDailyTotalMinutes: (userId: string, date: string) => number;
+  getDailyNonTravelMinutes: (userId: string, date: string) => number;
   submitWeek: (userId: string, weekStart: string) => void;
   isWeekSubmitted: (userId: string, weekStart: string) => boolean;
   getWeeklyTotals: (userId: string, numberOfWeeks: number) => WeeklyTotal[];
@@ -178,6 +180,16 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     (userId: string, date: string): number => {
       return entries
         .filter(entry => entry.userId === userId && entry.date === date)
+        .reduce((sum, entry) => sum + toTotalMinutes(entry.hours, entry.minutes), 0);
+    },
+    [entries]
+  );
+
+  const getDailyNonTravelMinutes = useCallback(
+    (userId: string, date: string): number => {
+      return entries
+        .filter(entry => entry.userId === userId && entry.date === date)
+        .filter(entry => !isTravelExempt(entry.activityTypeId) && !isTravelExempt(entry.workAreaActivityTypeId))
         .reduce((sum, entry) => sum + toTotalMinutes(entry.hours, entry.minutes), 0);
     },
     [entries]
@@ -320,6 +332,7 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         getWeekSummary,
         getDailyTotals,
         getDailyTotalMinutes,
+        getDailyNonTravelMinutes,
         submitWeek,
         isWeekSubmitted,
         getWeeklyTotals,
