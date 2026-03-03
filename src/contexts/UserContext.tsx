@@ -20,6 +20,9 @@ interface UserContextType {
   addUser: (data: Omit<User, 'id'>) => Promise<void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
+  provisionInvite: (userId: string) => Promise<void>;
+  sendReset: (userId: string) => Promise<void>;
+  createWithPassword: (userId: string, password: string) => Promise<void>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -236,6 +239,38 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await refreshAllUsers();
   }, [refreshAllUsers, actingHeaders]);
 
+  const provisionInvite = useCallback(async (userId: string) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
+      body: { action: 'provision-invite', userId },
+    });
+    if (error) { toast.error('Invite failed: ' + error.message); throw error; }
+    if (result?.error) { toast.error('Invite failed: ' + result.error); throw new Error(result.error); }
+    toast.success('Invite sent successfully.');
+    await refreshAllUsers();
+  }, [refreshAllUsers, actingHeaders]);
+
+  const sendReset = useCallback(async (userId: string) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
+      body: { action: 'send-reset', userId },
+    });
+    if (error) { toast.error('Reset failed: ' + error.message); throw error; }
+    if (result?.error) { toast.error('Reset failed: ' + result.error); throw new Error(result.error); }
+    toast.success('Password reset email sent.');
+  }, [actingHeaders]);
+
+  const createWithPassword = useCallback(async (userId: string, password: string) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
+      body: { action: 'create-with-password', userId, password },
+    });
+    if (error) { toast.error('Create login failed: ' + error.message); throw error; }
+    if (result?.error) { toast.error('Create login failed: ' + result.error); throw new Error(result.error); }
+    toast.success('Login created. User can now sign in.');
+    await refreshAllUsers();
+  }, [refreshAllUsers, actingHeaders]);
+
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
 
   const value = useMemo<UserContextType>(() => ({
@@ -253,7 +288,10 @@ export function UserProvider({ children }: { children: ReactNode }) {
     addUser,
     updateUser,
     toggleUserActive,
-  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive]);
+    provisionInvite,
+    sendReset,
+    createWithPassword,
+  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword]);
 
   return (
     <UserContext.Provider value={value}>
