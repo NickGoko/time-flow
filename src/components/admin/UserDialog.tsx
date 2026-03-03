@@ -113,8 +113,10 @@ export function UserDialog({ open, onOpenChange, user, onSave }: UserDialogProps
           <Select value={appRole} onValueChange={v => setAppRole(v as AppRole)}>
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="admin">Admin</SelectItem>
               <SelectItem value="employee">Employee</SelectItem>
+              <SelectItem value="hod">HOD</SelectItem>
+              <SelectItem value="leadership">Leadership</SelectItem>
+              <SelectItem value="admin">Admin</SelectItem>
             </SelectContent>
           </Select>
         </div>

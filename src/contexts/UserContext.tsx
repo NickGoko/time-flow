@@ -293,7 +293,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     allUsers,
     allUsersList,
     appRole: currentUser?.appRole ?? null,
-    isAdmin: currentUser?.appRole === 'admin' || currentUser?.appRole === 'super_admin',
+    isAdmin: currentUser?.appRole === 'admin' || currentUser?.appRole === 'super_admin' || currentUser?.appRole === 'leadership',
     isSuperAdmin: currentUser?.appRole === 'super_admin',
     isLoading,
     isDevMode: DEV_MODE,

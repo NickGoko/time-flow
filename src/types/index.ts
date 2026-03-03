@@ -2,7 +2,7 @@
 
 export type BillableStatus = 'billable' | 'maybe_billable' | 'not_billable';
 
-export type AppRole = 'admin' | 'employee' | 'super_admin';
+export type AppRole = 'admin' | 'employee' | 'super_admin' | 'hod' | 'leadership';
 
 export interface Department {
   id: string;

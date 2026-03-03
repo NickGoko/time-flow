@@ -13,6 +13,7 @@ import { useCurrentUser } from '@/contexts/UserContext';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { AUTH_ENABLED } from '@/lib/devMode';
 import { toast } from 'sonner';
+import type { AppRole } from '@/types';
 import { Upload, FileText, CheckCircle2, AlertCircle, Users } from 'lucide-react';
 
 const DEPT_MAP: Record<string, string> = {
@@ -31,8 +32,9 @@ interface ParsedUser {
   departmentId: string;
   departmentName: string;
   role: string;
-  appRole: 'admin' | 'employee' | 'super_admin';
+  appRole: AppRole;
   isActive: boolean;
+  managedDepartments?: string[]; // department IDs for HOD scoping
 }
 
 interface ImportReport {
@@ -42,12 +44,22 @@ interface ImportReport {
   errors: string[];
 }
 
-function parseRoles(rolesStr: string): 'admin' | 'super_admin' | 'employee' {
+function parseHighestRole(rolesStr: string): AppRole {
   if (!rolesStr) return 'employee';
   const parts = rolesStr.split(';').map(s => s.trim().toLowerCase());
+  // Priority: admin > leadership > hod > employee (FinanceReporter maps to employee)
   if (parts.includes('admin')) return 'admin';
-  if (parts.includes('leadership')) return 'super_admin';
+  if (parts.includes('leadership')) return 'leadership';
+  if (parts.includes('hod')) return 'hod';
   return 'employee';
+}
+
+function parseManagedDepartments(deptStr: string): string[] {
+  if (!deptStr) return [];
+  return deptStr.split(';').map(d => {
+    const key = d.trim().toLowerCase();
+    return DEPT_MAP[key] || '';
+  }).filter(Boolean);
 }
 
 function parseCsv(text: string): ParsedUser[] {
@@ -71,14 +83,17 @@ function parseCsv(text: string): ParsedUser[] {
     const deptName = row['home_department'] || '';
     const deptId = DEPT_MAP[deptName.toLowerCase()] || '';
 
+    const managedDepts = parseManagedDepartments(row['managed_departments'] || '');
+
     result.push({
       name: row['display_name'] || '',
       email,
       departmentId: deptId,
       departmentName: deptName,
       role: row['job_title'] || '',
-      appRole: parseRoles(row['roles'] || ''),
+      appRole: parseHighestRole(row['roles'] || ''),
       isActive: (row['is_active'] || 'true').toLowerCase() === 'true',
+      managedDepartments: managedDepts.length > 0 ? managedDepts : undefined,
     });
   }
 
@@ -131,6 +146,7 @@ export default function AdminImportExport() {
             role: u.role,
             appRole: u.appRole,
             isActive: u.isActive,
+            managedDepartments: u.managedDepartments || null,
           })),
         },
       });
@@ -256,7 +272,7 @@ export default function AdminImportExport() {
                           </TableCell>
                           <TableCell className="text-sm">{u.role}</TableCell>
                           <TableCell>
-                            <Badge variant={u.appRole === 'admin' ? 'default' : u.appRole === 'super_admin' ? 'secondary' : 'outline'}>
+                          <Badge variant={u.appRole === 'admin' || u.appRole === 'leadership' ? 'default' : u.appRole === 'hod' ? 'secondary' : 'outline'}>
                               {u.appRole}
                             </Badge>
                           </TableCell>
@@ -355,8 +371,8 @@ export default function AdminImportExport() {
                           <TableCell className="text-sm">{u.email}</TableCell>
                           <TableCell className="text-sm">{getDepartmentById(u.departmentId)?.name ?? u.departmentId}</TableCell>
                           <TableCell>
-                            <Badge variant={u.appRole === 'admin' || u.appRole === 'super_admin' ? 'default' : 'secondary'}>
-                              {u.appRole === 'super_admin' ? 'Super Admin' : u.appRole === 'admin' ? 'Admin' : 'Employee'}
+                            <Badge variant={u.appRole === 'admin' || u.appRole === 'super_admin' || u.appRole === 'leadership' ? 'default' : u.appRole === 'hod' ? 'secondary' : 'outline'}>
+                              {u.appRole === 'super_admin' ? 'Super Admin' : u.appRole}
                             </Badge>
                           </TableCell>
                         </TableRow>
