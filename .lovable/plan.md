@@ -1,71 +1,137 @@
 
 
-# Bulk Import + RBAC UI — Implementation Plan
+# Combined Implementation Plan: Bricks 1, 2, and 3
 
-## Current State (Already Built)
+---
 
-Most of the requested functionality **already exists**:
+## BRICK 1: Travel Exception + Daily 10h Cap
 
-- **Edge Function** `admin-users` already has: `bulk-import`, `provision-invite`, `send-reset`, `create-with-password`, `bulk-provision` actions
-- **AdminImportExport.tsx** already has: Import tab (CSV upload + preview + import), Provision Logins tab (checkbox select + bulk provision)
-- **UsersTable.tsx** already has: Auth dropdown column with Invite, Reset Password, Create Login actions
+### Current State
+- `MAX_DAILY_HOURS = 10` and `MAX_DAILY_MINUTES = 600` already exist in `src/types/index.ts`
+- Daily cap is enforced in two places:
+  - `TimeEntryForm.tsx` (single entry): lines 153-157 calculate `wouldExceedCap`
+  - `DailyGridEntry.tsx` (multi entry): lines 177-186 check aggregate in `validateAndSave`
+- "Travel" exists only as an activity type: `act-admin-travel` ("Travel/logistics") under phase "General administrative"
+- There is also `act-es-transport` ("Transport") under "Entrepreneur support"
 
-## What's Missing (Gaps vs. New CSV Schema)
+### Decision: Option B — Infer travel from activity type
 
-The uploaded CSV uses a richer schema than the current importer handles:
+Justification: Adding a `time_category` column (Option A) requires a DB migration, changes to the Supabase schema, RLS updates, and edge function changes — heavy for a UI-level validation rule. Instead, we tag specific activity type IDs as "travel-exempt" using a constant list. This is simpler, requires no schema changes, and can be expanded later.
 
-| CSV Field | Current Handling | Gap |
-|---|---|---|
-| `roles` (multi: `Employee;HOD;Leadership;Admin`) | Maps to single `appRole` (`admin`/`super_admin`/`employee`) | Missing `hod`, `leadership` in TypeScript `AppRole` type; only picks highest role |
-| `managed_departments` | Ignored | Not imported into `user_department_scope` table |
-| `capabilities` | Ignored | Not mapped to permissions (handled by role_permissions seed, informational only) |
-| `FinanceReporter` role | Ignored | Custom role not in `app_role` enum — needs decision |
+### Schema Changes
+None.
 
-## Plan
+### Plan
 
-### Brick 1: Update Import to Support RBAC Fields (≤5 files)
+1. **`src/types/index.ts`**: Add a `TRAVEL_EXEMPT_ACTIVITY_IDS` constant set containing `'act-admin-travel'` and `'act-es-transport'`. Add helper `isTravelExempt(activityTypeId?: string): boolean`.
+
+2. **`src/components/TimeEntryForm.tsx`**: Import `isTravelExempt`. When checking `wouldExceedCap`, skip the check if the selected `activityTypeId` is travel-exempt. Update the error message to say: "Daily total cannot exceed 10h. Only Travel entries may exceed this limit."
+
+3. **`src/components/DailyGridEntry.tsx`**: Import `isTravelExempt`. In `validateAndSave`, split rows into travel-exempt and non-travel. Only sum non-travel rows + existing non-travel entries for the cap check. Update the error message similarly.
+
+4. **`src/contexts/TimeEntriesContext.tsx`**: Add `getDailyNonTravelMinutes(userId, date)` that filters out entries with travel-exempt activity IDs when summing. This requires checking `activityTypeId` and `workAreaActivityTypeId` on each entry.
+
+### Files (4 files)
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/types/index.ts` | Add `'hod' \| 'leadership'` to `AppRole` type |
-| 2 | `src/pages/admin/AdminImportExport.tsx` | Update `parseRoles()` to map `HOD→hod`, `Leadership→leadership`, `Admin→admin`; parse `managed_departments` column; send `managedDepartments` array to edge function |
-| 3 | `supabase/functions/admin-users/index.ts` | In `bulk-import` action: accept `managedDepartments` per user, upsert into `user_department_scope`; accept `appRole` values including `hod`/`leadership` |
-| 4 | `src/contexts/UserContext.tsx` | Update `AppRole` references to include new values; fetch `user_department_scope` in `refreshAllUsers` |
+| 1 | `src/types/index.ts` | Add `TRAVEL_EXEMPT_ACTIVITY_IDS` set + `isTravelExempt()` |
+| 2 | `src/contexts/TimeEntriesContext.tsx` | Add `getDailyNonTravelMinutes()` |
+| 3 | `src/components/TimeEntryForm.tsx` | Use travel-aware cap check |
+| 4 | `src/components/DailyGridEntry.tsx` | Use travel-aware cap check in `validateAndSave` |
 
-### Brick 2: Phase 3.2 Admin UI (≤8 files)
+### Test Script
+- Log 9h of regular work on a day. Try adding 2h more regular work -> FAIL with message mentioning Travel.
+- Log 9h of regular work. Add 3h with activity "Travel/logistics" -> PASS (total 12h allowed).
+- Grid mode: 3 rows (4h work + 4h work + 3h travel). Save all -> PASS.
+- Grid mode: 3 rows (4h work + 4h work + 3h work = 11h non-travel) -> FAIL.
+
+---
+
+## BRICK 2: Leave/Absence + Public Holiday Auto-fill
+
+### Current State
+- Leave auto-fill already partially works in both `TimeEntryForm.tsx` and `DailyGridEntry.tsx`
+- When `proj-leave` is selected, phase is set to `phase-absence`, hours to 8, billable to `not_billable`, deliverable to `other`
+- But there's no distinction between "Leave day" vs "Public holiday" — both are activity types under `phase-absence`
+- The activity type is NOT auto-set (left empty)
+- No "Public Holiday" workstream — it's just an activity under Leave
+
+### What's Needed
+- When Leave is selected AND activity = "Leave day": defaults already work, just auto-select the activity
+- When Leave is selected AND activity = "Public holiday": same defaults
+- Currently the user must manually pick the activity type after selecting Leave — this should auto-default to "Leave day"
+
+### Plan
+
+1. **`src/data/seed.ts`** (or `src/types/index.ts`): Add constant `LEAVE_DAY_ACTIVITY_ID = 'act-leave-day'` and `PUBLIC_HOLIDAY_ACTIVITY_ID = 'act-public-holiday'`.
+
+2. **`src/components/TimeEntryForm.tsx`**: When `LEAVE_PROJECT_ID` is selected, also auto-set `activityTypeId` to `LEAVE_DAY_ACTIVITY_ID`. Disable the activity dropdown for Leave (already done for phase). User can still switch to "Public holiday" if needed.
+
+3. **`src/components/DailyGridEntry.tsx`**: Same auto-fill logic in `updateRow` when `projectId` changes to `LEAVE_PROJECT_ID`: set `activityTypeId = 'act-leave-day'`.
+
+### Files (2 files — already touched by Brick 1)
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/pages/admin/AdminRoles.tsx` | New: read-only role × permission matrix from `permissions` + `role_permissions` |
-| 2 | `src/pages/admin/AdminAudit.tsx` | New: filterable audit log viewer querying `audit_log` |
-| 3 | `src/components/admin/UserDialog.tsx` | Updated role dropdown (4 roles), managed departments multi-select for HOD, mandatory "Reason for change" field |
-| 4 | `src/components/admin/UsersTable.tsx` | Show new roles in badge; pass reason to update |
-| 5 | `src/contexts/UserContext.tsx` | Pass `reason` + `managedDepartments` in `updateUser`; expose `hasPermission()` client helper |
-| 6 | `supabase/functions/admin-users/index.ts` | In `update` action: handle `managedDepartments` upsert + write audit_log entry with before/after + reason |
-| 7 | `src/App.tsx` | Add routes `/admin/roles`, `/admin/audit` |
-| 8 | `src/components/TopBar.tsx` | Add Roles, Audit nav links for admin |
+| 1 | `src/components/TimeEntryForm.tsx` | Auto-set activityTypeId to leave-day on Leave select |
+| 2 | `src/components/DailyGridEntry.tsx` | Same auto-set in grid row |
 
-### FinanceReporter Decision
+### Test Script
+- Select "Leave / Absence" workstream -> Phase auto-sets to "Absence", Activity auto-sets to "Leave day", Hours = 8, Minutes = 0, Billable = Not billable, Deliverable = Other
+- User can change activity to "Public holiday" — all other defaults stay
+- Grid mode: add a row, select Leave -> same auto-fill
+- Save a Leave entry -> entry shows correctly with badge
 
-The CSV includes a `FinanceReporter` role not in the `app_role` enum. Options:
-- **A) Ignore** — map to `employee` (they already get `export:org` + `view:org` from capabilities column, but capabilities aren't enforced client-side today)
-- **B) Add to enum** — requires SQL migration to add `finance_reporter` to `app_role`, plus seeding `role_permissions`
+---
 
-Recommendation: **Option A** for now. FinanceReporter users get `employee` role. Their specific permissions can be handled later via custom role_permissions or a future enum expansion.
+## BRICK 3: UX Polish (Sentence Case, Labels, Grouping, Collapse)
 
-### Test Steps
+### Current State
+- "History & Insights" label: `src/pages/Index.tsx` line 28, `src/pages/EmployeeInsights.tsx` line 116
+- "Row 1" label: `src/components/DailyGridEntry.tsx` line 299
+- Entry list starts expanded: `src/components/WeeklyTimesheet.tsx` line 47 (`entriesExpanded: true`), reset on day change line 51
+- Deliverable type + description are separate grid cells in `DailyGridEntry.tsx` lines 380-402
+- Dropdown labels already use sentence case in most places
 
-1. Upload the provided CSV on Import tab → preview shows 25 users with correct roles (hod, leadership, admin, employee)
-2. Click Import → report shows created/updated counts, 0 errors
-3. Go to Users page → all 25 users visible with correct departments and role badges
-4. Users with `managed_departments` (Ian=Communications, Johnni=Finance & Admin, Patricia=Impact, Winnie=HR) have entries in `user_department_scope`
-5. Re-import same CSV → all show as "updated", idempotent
-6. Provision tab → select 5 users → provision → per-row results
-7. Admin Roles page → permission matrix visible
-8. Admin Audit page → shows recent import/provision actions
+### Plan
 
-### Implementation Order
+| Change | File(s) | Detail |
+|---|---|---|
+| "History & Insights" -> "Dashboard" | `src/pages/Index.tsx`, `src/pages/EmployeeInsights.tsx` | Change link text + page title |
+| "Row 1" -> "Entry 1" | `src/components/DailyGridEntry.tsx` | Line 299: `Row {index + 1}` -> `Entry {index + 1}` |
+| Default collapsed entries | `src/components/WeeklyTimesheet.tsx` | Change `entriesExpanded` initial state to `false`, remove auto-expand on day change |
+| Group deliverable fields | `src/components/DailyGridEntry.tsx` | Wrap deliverable type + description in a visual group (shared border/bg) |
 
-1. **First**: Brick 1 (types + import updates) — gets all 25 users into the system
-2. **Second**: Brick 2 (admin UI for roles, audit, user dialog updates)
+### Files (4 files)
+
+| # | File | Change |
+|---|---|---|
+| 1 | `src/pages/Index.tsx` | "History & Insights" -> "Dashboard" |
+| 2 | `src/pages/EmployeeInsights.tsx` | Page title "History & Insights" -> "Dashboard" |
+| 3 | `src/components/DailyGridEntry.tsx` | "Row" -> "Entry", group deliverable fields visually |
+| 4 | `src/components/WeeklyTimesheet.tsx` | Default `entriesExpanded = false`, remove auto-expand effect |
+
+---
+
+## Combined File Count
+
+Across all 3 bricks, unique files touched: **6**
+
+| # | File | Bricks |
+|---|---|---|
+| 1 | `src/types/index.ts` | 1 |
+| 2 | `src/contexts/TimeEntriesContext.tsx` | 1 |
+| 3 | `src/components/TimeEntryForm.tsx` | 1, 2 |
+| 4 | `src/components/DailyGridEntry.tsx` | 1, 2, 3 |
+| 5 | `src/components/WeeklyTimesheet.tsx` | 3 |
+| 6 | `src/pages/Index.tsx` | 3 |
+| 7 | `src/pages/EmployeeInsights.tsx` | 3 |
+
+Total: **7 files** (within all brick limits).
+
+## Implementation Order
+1. Brick 1 (types + context + form + grid cap logic)
+2. Brick 2 (leave auto-fill in form + grid)
+3. Brick 3 (label renames + collapse default + deliverable grouping)
 
