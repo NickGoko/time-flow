@@ -306,9 +306,9 @@ Deno.serve(async (req) => {
             .eq('user_id', profile.id);
         }
 
-        // Re-invite via generateLink
+        // Re-send via magiclink (invite type fails if user already exists)
         const { error: linkErr } = await adminClient.auth.admin.generateLink({
-          type: 'invite',
+          type: 'magiclink',
           email: profile.email,
         });
         if (linkErr) return jsonResponse({ error: linkErr.message }, 400);
