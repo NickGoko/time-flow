@@ -426,6 +426,81 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true });
     }
 
+    // ── Action: bulk-provision ──────────────────────────────────
+    if (action === 'bulk-provision') {
+      const { userIds } = body;
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        return jsonResponse({ error: 'userIds array is required' }, 400);
+      }
+
+      // Fetch all auth users once to avoid repeated listUsers calls
+      const { data: listData } = await adminClient.auth.admin.listUsers();
+      const authUsersByEmail = new Map<string, { id: string }>();
+      listData?.users?.forEach((u: { id: string; email?: string }) => {
+        if (u.email) authUsersByEmail.set(u.email.toLowerCase(), { id: u.id });
+      });
+
+      const results: { userId: string; email: string; status: string; error?: string }[] = [];
+
+      for (const uid of userIds) {
+        try {
+          const { data: profile } = await adminClient
+            .from('profiles')
+            .select('id, email, name')
+            .eq('id', uid)
+            .single();
+
+          if (!profile) {
+            results.push({ userId: uid, email: '', status: 'error', error: 'Profile not found' });
+            continue;
+          }
+
+          const emailLower = profile.email.toLowerCase();
+          const existingAuth = authUsersByEmail.get(emailLower);
+
+          if (existingAuth) {
+            // Sync profile.id if needed
+            if (existingAuth.id !== profile.id) {
+              await adminClient.from('profiles').update({ id: existingAuth.id }).eq('id', profile.id);
+              await adminClient.from('user_roles').update({ user_id: existingAuth.id }).eq('user_id', profile.id);
+            }
+            // Re-invite
+            const { error: linkErr } = await adminClient.auth.admin.generateLink({
+              type: 'invite',
+              email: profile.email,
+            });
+            if (linkErr) {
+              results.push({ userId: uid, email: profile.email, status: 'error', error: linkErr.message });
+            } else {
+              results.push({ userId: uid, email: profile.email, status: 're-invited' });
+            }
+          } else {
+            // New invite
+            const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
+              profile.email,
+              { data: { full_name: profile.name } }
+            );
+            if (inviteErr) {
+              results.push({ userId: uid, email: profile.email, status: 'error', error: inviteErr.message });
+              continue;
+            }
+            const newAuthId = inviteData.user.id;
+            if (newAuthId !== profile.id) {
+              await adminClient.from('profiles').update({ id: newAuthId }).eq('id', profile.id);
+              await adminClient.from('user_roles').update({ user_id: newAuthId }).eq('user_id', profile.id);
+            }
+            // Add to map for subsequent lookups
+            authUsersByEmail.set(emailLower, { id: newAuthId });
+            results.push({ userId: uid, email: profile.email, status: 'invited' });
+          }
+        } catch (err) {
+          results.push({ userId: uid, email: '', status: 'error', error: String(err) });
+        }
+      }
+
+      return jsonResponse({ results });
+    }
+
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);

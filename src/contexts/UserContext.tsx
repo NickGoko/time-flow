@@ -23,6 +23,7 @@ interface UserContextType {
   provisionInvite: (userId: string) => Promise<void>;
   sendReset: (userId: string) => Promise<void>;
   createWithPassword: (userId: string, password: string) => Promise<void>;
+  bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; error?: string }[]>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -271,6 +272,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
     await refreshAllUsers();
   }, [refreshAllUsers, actingHeaders]);
 
+  const bulkProvision = useCallback(async (userIds: string[]) => {
+    const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
+      body: { action: 'bulk-provision', userIds },
+    });
+    if (error) { toast.error('Bulk provision failed: ' + error.message); throw error; }
+    if (result?.error) { toast.error('Bulk provision failed: ' + result.error); throw new Error(result.error); }
+    await refreshAllUsers();
+    return result.results as { userId: string; email: string; status: string; error?: string }[];
+  }, [refreshAllUsers, actingHeaders]);
+
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
 
   const value = useMemo<UserContextType>(() => ({
@@ -291,7 +303,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     provisionInvite,
     sendReset,
     createWithPassword,
-  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword]);
+    bulkProvision,
+  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword, bulkProvision]);
 
   return (
     <UserContext.Provider value={value}>
