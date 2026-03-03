@@ -151,8 +151,16 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   // ── Admin user management via Edge Function ───────────────────
 
+  const actingHeaders = useMemo(() => {
+    if (!AUTH_ENABLED && currentUser) {
+      return { 'x-acting-user-id': currentUser.id };
+    }
+    return {};
+  }, [currentUser]);
+
   const addUser = useCallback(async (data: Omit<User, 'id'>) => {
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
       body: {
         action: 'create',
         email: data.email,
@@ -175,10 +183,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
     toast.success('User invited successfully. They will receive an email to set their password.');
     await refreshAllUsers();
-  }, [refreshAllUsers]);
+  }, [refreshAllUsers, actingHeaders]);
 
   const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>) => {
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
       body: { action: 'update', userId: id, updates },
     });
 
@@ -207,10 +216,11 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (refreshed) setCurrentUserState(refreshed);
       }
     }
-  }, [refreshAllUsers, currentUser?.id]);
+  }, [refreshAllUsers, currentUser?.id, actingHeaders]);
 
   const toggleUserActive = useCallback(async (id: string) => {
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
+      headers: actingHeaders,
       body: { action: 'toggle-active', userId: id },
     });
 
@@ -224,7 +234,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
 
     await refreshAllUsers();
-  }, [refreshAllUsers]);
+  }, [refreshAllUsers, actingHeaders]);
 
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
 

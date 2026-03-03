@@ -2,7 +2,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.49.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-acting-user-id, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
 };
 
 function jsonResponse(body: Record<string, unknown>, status = 200) {
@@ -12,32 +12,45 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: ReturnType<typeof createClient>): Promise<{ callerId: string | null; error?: string }> {
+  const authHeader = req.headers.get('Authorization');
+  if (authHeader?.startsWith('Bearer ')) {
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+    });
+    const { data: { user }, error } = await callerClient.auth.getUser();
+    if (!error && user) {
+      return { callerId: user.id };
+    }
+  }
+
+  const actingUserId = req.headers.get('x-acting-user-id');
+  if (actingUserId) {
+    const { data: profile } = await adminClient.from('profiles').select('id').eq('id', actingUserId).single();
+    if (profile) {
+      return { callerId: actingUserId };
+    }
+    return { callerId: null, error: 'Invalid acting user ID' };
+  }
+
+  return { callerId: null, error: 'Unauthorized' };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader?.startsWith('Bearer ')) {
-      return jsonResponse({ error: 'Unauthorized' }, 401);
-    }
-
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-
-    // Verify caller identity
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user: callerUser }, error: userError } = await callerClient.auth.getUser();
-    if (userError || !callerUser) {
-      return jsonResponse({ error: 'Unauthorized' }, 401);
-    }
-
-    const callerId = callerUser.id;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    const { callerId, error: idError } = await resolveCallerId(req, supabaseUrl, anonKey, adminClient);
+    if (!callerId) {
+      return jsonResponse({ error: idError ?? 'Unauthorized' }, 401);
+    }
 
     // Verify super_admin role (not just admin)
     const { data: roleRow } = await adminClient
@@ -82,7 +95,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: linkError?.message ?? 'Failed to generate link' }, 500);
     }
 
-    // Build the verification URL
     const actionLink = linkData.properties?.action_link;
     if (!actionLink) {
       return jsonResponse({ error: 'No action link returned' }, 500);
