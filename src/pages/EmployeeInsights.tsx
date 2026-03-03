@@ -113,7 +113,7 @@ const EmployeeInsights = () => {
             <Link to="/"><ArrowLeft className="h-4 w-4" /></Link>
           </Button>
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">History &amp; Insights</h1>
+            <h1 className="text-2xl font-bold tracking-tight">Dashboard</h1>
             <p className="text-muted-foreground text-sm">Your personal time tracking overview</p>
           </div>
         </div>

@@ -44,12 +44,7 @@ export function WeeklyTimesheet() {
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [selectedDay, setSelectedDay] = useState(0);
   const [entryMode, setEntryMode] = useState<'single' | 'grid'>('single');
-  const [entriesExpanded, setEntriesExpanded] = useState(true);
-
-  // Reset expand state when day changes
-  useEffect(() => {
-    setEntriesExpanded(true);
-  }, [selectedDay]);
+  const [entriesExpanded, setEntriesExpanded] = useState(false);
 
   const dailyTotals = getDailyTotals(currentUser.id, weekStart);
   const weekSummary = getWeekSummary(currentUser.id, weekStart);
