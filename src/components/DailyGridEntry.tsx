@@ -1,5 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import { Plus, Save, Trash2, AlertCircle } from 'lucide-react';
+import { cn, getProgressColor } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -22,6 +23,7 @@ import {
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
   MAX_DAILY_MINUTES,
+  HOURS_PER_DAY_TARGET,
   MAX_DAILY_HOURS,
   MAX_PAST_DAYS,
   toTotalMinutes,
@@ -233,9 +235,18 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       <div className="sticky top-0 z-10 bg-card py-2 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-2">
         <div className="flex items-center gap-2 flex-wrap">
           <Badge variant="outline" className="text-xs sm:text-sm font-medium">{formattedDate}</Badge>
-          <span className="text-xs text-muted-foreground">
-            Logged: {formatHours(existingMinutes)}h / {MAX_DAILY_HOURS}h
-          </span>
+          {(() => {
+            const target = HOURS_PER_DAY_TARGET;
+            const pct = Math.round((existingMinutes / (target * 60)) * 100);
+            const color = getProgressColor(pct);
+            const ot = Math.max(0, existingMinutes - target * 60);
+            return (
+              <span className={cn("text-xs tabular-nums", color.text)}>
+                Logged: {formatHours(existingMinutes)}h / {target}h ({pct}%)
+                {ot > 0 && <span className="ml-1 text-success">· OT +{formatHours(ot)}h</span>}
+              </span>
+            );
+          })()}
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={addRow} className="gap-1 flex-1 sm:flex-initial">

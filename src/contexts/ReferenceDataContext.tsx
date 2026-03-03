@@ -154,9 +154,10 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       const internal = projects.filter(
         p => p.isActive && p.type === 'internal_department' && p.owningDepartmentId === departmentId,
       );
-      const accessibleIds = new Set(
-        access.filter(a => a.departmentId === departmentId).map(a => a.workstreamId),
-      );
+      // Safety fallback: if no departmentId, show all external projects
+      const accessibleIds = departmentId
+        ? new Set(access.filter(a => a.departmentId === departmentId).map(a => a.workstreamId))
+        : new Set(projects.filter(p => p.type === 'external_project').map(p => p.id));
       const external = projects.filter(
         p => p.isActive && p.type === 'external_project' && p.id !== 'proj-leave' && accessibleIds.has(p.id),
       );
