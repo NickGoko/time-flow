@@ -179,6 +179,99 @@ Deno.serve(async (req) => {
       return jsonResponse({ success: true, isActive: !profile.is_active });
     }
 
+    // ── Action: bulk-import ─────────────────────────────────────
+    if (action === 'bulk-import') {
+      const { users } = body;
+      if (!Array.isArray(users) || users.length === 0) {
+        return jsonResponse({ error: 'users array is required' }, 400);
+      }
+
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+      const errors: string[] = [];
+
+      for (const u of users) {
+        try {
+          if (!u.email) {
+            skipped++;
+            errors.push(`Row skipped: missing email`);
+            continue;
+          }
+
+          const email = u.email.trim().toLowerCase();
+
+          // 1. Check if profile exists by email
+          const { data: existing } = await adminClient
+            .from('profiles')
+            .select('id')
+            .eq('email', email)
+            .maybeSingle();
+
+          let profileId: string;
+
+          if (existing) {
+            // 2. UPDATE existing profile
+            profileId = existing.id;
+            const updates: Record<string, unknown> = {};
+            if (u.name !== undefined) updates.name = u.name;
+            if (u.departmentId !== undefined) updates.department_id = u.departmentId;
+            if (u.role !== undefined) updates.role = u.role;
+            if (u.isActive !== undefined) updates.is_active = u.isActive;
+
+            if (Object.keys(updates).length > 0) {
+              const { error: upErr } = await adminClient
+                .from('profiles')
+                .update(updates)
+                .eq('id', profileId);
+              if (upErr) {
+                errors.push(`Update failed for ${email}: ${upErr.message}`);
+                skipped++;
+                continue;
+              }
+            }
+            updated++;
+          } else {
+            // 3. INSERT new profile with generated UUID
+            profileId = crypto.randomUUID();
+            const { error: insErr } = await adminClient
+              .from('profiles')
+              .insert({
+                id: profileId,
+                email,
+                name: u.name || '',
+                department_id: u.departmentId || null,
+                role: u.role || '',
+                is_active: u.isActive ?? true,
+              });
+            if (insErr) {
+              errors.push(`Insert failed for ${email}: ${insErr.message}`);
+              skipped++;
+              continue;
+            }
+            created++;
+          }
+
+          // 4. Upsert user_roles (one role per user)
+          const appRole = u.appRole || 'employee';
+          const { error: roleUpsertErr } = await adminClient
+            .from('user_roles')
+            .upsert(
+              { user_id: profileId, role: appRole },
+              { onConflict: 'user_id' }
+            );
+          if (roleUpsertErr) {
+            errors.push(`Role upsert failed for ${email}: ${roleUpsertErr.message}`);
+          }
+        } catch (rowErr) {
+          errors.push(`Unexpected error: ${String(rowErr)}`);
+          skipped++;
+        }
+      }
+
+      return jsonResponse({ created, updated, skipped, errors });
+    }
+
     return jsonResponse({ error: 'Unknown action' }, 400);
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
