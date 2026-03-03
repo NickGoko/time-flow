@@ -109,11 +109,19 @@ export function UsersTable() {
     {
       key: 'appRole',
       header: 'App Role',
-      render: (row) => (
-        <Badge variant={row.appRole === 'admin' || row.appRole === 'super_admin' ? 'default' : 'secondary'}>
-          {row.appRole === 'super_admin' ? 'Super Admin' : row.appRole === 'admin' ? 'Admin' : 'Employee'}
-        </Badge>
-      ),
+      render: (row) => {
+        const label = row.appRole === 'super_admin' ? 'Super Admin'
+          : row.appRole === 'admin' ? 'Admin'
+          : row.appRole === 'leadership' ? 'Leadership'
+          : row.appRole === 'hod' ? 'HOD'
+          : 'Employee';
+        const isHighRole = ['admin', 'super_admin', 'leadership'].includes(row.appRole);
+        return (
+          <Badge variant={isHighRole ? 'default' : row.appRole === 'hod' ? 'secondary' : 'outline'}>
+            {label}
+          </Badge>
+        );
+      },
     },
     {
       key: 'weeklyExpectedHours',
@@ -165,7 +173,7 @@ export function UsersTable() {
     ...(isSuperAdmin
       ? [
           {
-            key: 'id' as keyof User,
+            key: 'avatarUrl' as keyof User, // unique key to avoid duplicate 'id' key
             header: '',
             render: (row: User) =>
               row.id !== currentUser?.id ? (
