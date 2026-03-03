@@ -7,11 +7,13 @@ import { Input } from '@/components/ui/input';
 import { ExportPanel } from '@/components/admin/ExportPanel';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentUser } from '@/contexts/UserContext';
+import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { AUTH_ENABLED } from '@/lib/devMode';
 import { toast } from 'sonner';
-import { Upload, FileText, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Upload, FileText, CheckCircle2, AlertCircle, Users } from 'lucide-react';
 
 const DEPT_MAP: Record<string, string> = {
   'finance & admin': 'dept-finance',
@@ -84,10 +86,16 @@ function parseCsv(text: string): ParsedUser[] {
 }
 
 export default function AdminImportExport() {
-  const { currentUser } = useCurrentUser();
+  const { currentUser, allUsersList, bulkProvision } = useCurrentUser();
+  const { getDepartmentById } = useReferenceData();
   const [parsed, setParsed] = useState<ParsedUser[] | null>(null);
   const [report, setReport] = useState<ImportReport | null>(null);
   const [importing, setImporting] = useState(false);
+
+  // Provision tab state
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [provisioning, setProvisioning] = useState(false);
+  const [provisionResults, setProvisionResults] = useState<{ userId: string; email: string; status: string; error?: string }[] | null>(null);
 
   const handleFile = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -144,6 +152,36 @@ export default function AdminImportExport() {
     }
   }, [parsed, currentUser]);
 
+  const handleBulkProvision = useCallback(async () => {
+    if (selectedIds.size === 0) return;
+    setProvisioning(true);
+    try {
+      const results = await bulkProvision(Array.from(selectedIds));
+      setProvisionResults(results);
+      const invited = results.filter(r => r.status === 'invited' || r.status === 're-invited').length;
+      const errors = results.filter(r => r.status === 'error').length;
+      toast.success(`Provisioned ${invited} user(s)${errors > 0 ? `, ${errors} error(s)` : ''}`);
+    } catch { /* toast already shown */ } finally {
+      setProvisioning(false);
+    }
+  }, [selectedIds, bulkProvision]);
+
+  const toggleSelectAll = useCallback(() => {
+    if (selectedIds.size === allUsersList.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allUsersList.map(u => u.id)));
+    }
+  }, [selectedIds.size, allUsersList]);
+
+  const toggleSelect = useCallback((id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <TopBar />
@@ -154,6 +192,7 @@ export default function AdminImportExport() {
           <TabsList>
             <TabsTrigger value="export">Export</TabsTrigger>
             <TabsTrigger value="import">Import</TabsTrigger>
+            <TabsTrigger value="provision">Provision Logins</TabsTrigger>
           </TabsList>
 
           <TabsContent value="export" className="mt-6">
@@ -234,7 +273,7 @@ export default function AdminImportExport() {
             {report && (
               <Card className="p-6 space-y-3">
                 <div className="flex items-center gap-2">
-                  <CheckCircle2 className="h-5 w-5 text-green-600" />
+                  <CheckCircle2 className="h-5 w-5 text-primary" />
                   <h3 className="font-medium">Import Report</h3>
                 </div>
                 <div className="grid grid-cols-3 gap-4 text-center">
@@ -264,6 +303,104 @@ export default function AdminImportExport() {
                     </ul>
                   </div>
                 )}
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* ── Provision Logins Tab ──────────────────────────────── */}
+          <TabsContent value="provision" className="mt-6 space-y-6">
+            {!provisionResults ? (
+              <Card className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Users className="h-5 w-5 text-muted-foreground" />
+                    <h3 className="font-medium">Select Users to Provision ({selectedIds.size} selected)</h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={toggleSelectAll}>
+                      {selectedIds.size === allUsersList.length ? 'Deselect All' : 'Select All'}
+                    </Button>
+                    <Button onClick={handleBulkProvision} disabled={provisioning || selectedIds.size === 0}>
+                      {provisioning ? 'Provisioning…' : `Provision ${selectedIds.size} User(s)`}
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="rounded-md border overflow-auto max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={selectedIds.size === allUsersList.length && allUsersList.length > 0}
+                            onCheckedChange={toggleSelectAll}
+                          />
+                        </TableHead>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Department</TableHead>
+                        <TableHead>App Role</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {allUsersList.map(u => (
+                        <TableRow key={u.id}>
+                          <TableCell>
+                            <Checkbox
+                              checked={selectedIds.has(u.id)}
+                              onCheckedChange={() => toggleSelect(u.id)}
+                            />
+                          </TableCell>
+                          <TableCell className="font-medium">{u.name}</TableCell>
+                          <TableCell className="text-sm">{u.email}</TableCell>
+                          <TableCell className="text-sm">{getDepartmentById(u.departmentId)?.name ?? u.departmentId}</TableCell>
+                          <TableCell>
+                            <Badge variant={u.appRole === 'admin' || u.appRole === 'super_admin' ? 'default' : 'secondary'}>
+                              {u.appRole === 'super_admin' ? 'Super Admin' : u.appRole === 'admin' ? 'Admin' : 'Employee'}
+                            </Badge>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
+              </Card>
+            ) : (
+              <Card className="p-6 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-5 w-5 text-primary" />
+                    <h3 className="font-medium">Provision Results</h3>
+                  </div>
+                  <Button variant="outline" onClick={() => { setProvisionResults(null); setSelectedIds(new Set()); }}>
+                    Back
+                  </Button>
+                </div>
+
+                <div className="rounded-md border overflow-auto max-h-[400px]">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Email</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Details</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {provisionResults.map((r, i) => (
+                        <TableRow key={i}>
+                          <TableCell className="text-sm">{r.email || r.userId}</TableCell>
+                          <TableCell>
+                            <Badge variant={r.status === 'error' ? 'destructive' : 'default'}>
+                              {r.status}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">{r.error ?? '—'}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </div>
               </Card>
             )}
           </TabsContent>
