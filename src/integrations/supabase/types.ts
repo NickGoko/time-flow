@@ -43,6 +43,42 @@ export type Database = {
           },
         ]
       }
+      audit_log: {
+        Row: {
+          action: string
+          actor_id: string
+          after_data: Json | null
+          before_data: Json | null
+          created_at: string
+          id: string
+          reason: string | null
+          target_id: string | null
+          target_type: string
+        }
+        Insert: {
+          action: string
+          actor_id: string
+          after_data?: Json | null
+          before_data?: Json | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          target_id?: string | null
+          target_type: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string
+          after_data?: Json | null
+          before_data?: Json | null
+          created_at?: string
+          id?: string
+          reason?: string | null
+          target_id?: string | null
+          target_type?: string
+        }
+        Relationships: []
+      }
       deliverable_types: {
         Row: {
           id: string
@@ -117,6 +153,21 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      permissions: {
+        Row: {
+          description: string
+          id: string
+        }
+        Insert: {
+          description: string
+          id: string
+        }
+        Update: {
+          description?: string
+          id?: string
+        }
+        Relationships: []
       }
       phases: {
         Row: {
@@ -248,6 +299,29 @@ export type Database = {
           },
         ]
       }
+      role_permissions: {
+        Row: {
+          permission_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Insert: {
+          permission_id: string
+          role: Database["public"]["Enums"]["app_role"]
+        }
+        Update: {
+          permission_id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "role_permissions_permission_id_fkey"
+            columns: ["permission_id"]
+            isOneToOne: false
+            referencedRelation: "permissions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       time_entries: {
         Row: {
           activity_type_id: string | null
@@ -354,6 +428,24 @@ export type Database = {
           },
         ]
       }
+      user_department_scope: {
+        Row: {
+          department_id: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          department_id: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          department_id?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           id: string
@@ -404,6 +496,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      has_permission: {
+        Args: { _permission: string; _user_id: string }
+        Returns: boolean
+      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -411,9 +507,13 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_department_scoped: {
+        Args: { _department_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
-      app_role: "admin" | "employee" | "super_admin"
+      app_role: "admin" | "employee" | "super_admin" | "hod" | "leadership"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -541,7 +641,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "employee", "super_admin"],
+      app_role: ["admin", "employee", "super_admin", "hod", "leadership"],
     },
   },
 } as const
