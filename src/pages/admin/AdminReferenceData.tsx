@@ -29,15 +29,16 @@ export default function AdminReferenceData() {
 
         <Tabs defaultValue="workstreams" className="mt-6">
           <TabsList>
-            <TabsTrigger value="workstreams">Workstreams</TabsTrigger>
-            <TabsTrigger value="phases">Phases</TabsTrigger>
-            <TabsTrigger value="work-areas">Work Areas</TabsTrigger>
+            <TabsTrigger value="workstreams">Categories</TabsTrigger>
+            <TabsTrigger value="phases">Projects</TabsTrigger>
+            <TabsTrigger value="work-areas">Work areas</TabsTrigger>
             <TabsTrigger value="deliverables">Deliverables</TabsTrigger>
           </TabsList>
 
           <TabsContent value="workstreams" className="mt-6 space-y-8">
             <section>
               <h2 className="text-lg font-medium mb-4">Departments</h2>
+
               <AdminCrudTable<Department>
                 columns={deptColumns}
                 data={departments}
@@ -65,7 +66,7 @@ export default function AdminReferenceData() {
             </section>
 
             <section>
-              <h2 className="text-lg font-medium mb-4">Workstreams</h2>
+              <h2 className="text-lg font-medium mb-4">Categories</h2>
               <WorkstreamsTable />
             </section>
           </TabsContent>

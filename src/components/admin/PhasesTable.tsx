@@ -9,11 +9,11 @@ import { cn } from '@/lib/utils';
 import type { Phase, ActivityType } from '@/types';
 
 const phaseColumns: CrudColumn<Phase>[] = [
-  { key: 'name', header: 'Phase Name' },
+  { key: 'name', header: 'Project name' },
 ];
 
 const actColumns: CrudColumn<ActivityType>[] = [
-  { key: 'name', header: 'Activity Type Name' },
+  { key: 'name', header: 'Activity/task name' },
 ];
 
 export function PhasesTable() {
@@ -66,20 +66,20 @@ export function PhasesTable() {
   const handleSavePhase = (name: string) => {
     if (editingItem) {
       updatePhase(editingItem.id, name);
-      toast({ title: 'Phase updated', description: name });
+      toast({ title: 'Project updated', description: name });
     } else {
       addPhase(name);
-      toast({ title: 'Phase added', description: name });
+      toast({ title: 'Project added', description: name });
     }
   };
 
   const handleSaveActivityType = (name: string, phaseId: string) => {
     if (editingItem) {
       updateActivityType(editingItem.id, { name, phaseId });
-      toast({ title: 'Activity type updated', description: name });
+      toast({ title: 'Activity/task updated', description: name });
     } else {
       addActivityType(name, phaseId);
-      toast({ title: 'Activity type added', description: name });
+      toast({ title: 'Activity/task added', description: name });
     }
   };
 
@@ -91,19 +91,19 @@ export function PhasesTable() {
         onToggleActive={(id) => {
           togglePhaseActive(id);
           const p = phases.find(ph => ph.id === id);
-          toast({ title: p?.isActive ? 'Phase deactivated' : 'Phase activated', description: p?.name });
+          toast({ title: p?.isActive ? 'Project deactivated' : 'Project activated', description: p?.name });
         }}
         onEdit={openPhaseEdit}
         onAdd={openPhaseAdd}
-        addLabel="Add Phase"
-        entityLabel="phase"
-        searchPlaceholder="Search phases…"
+        addLabel="Add project"
+        entityLabel="project"
+        searchPlaceholder="Search projects…"
         searchKeys={['name']}
       />
 
       {/* Expandable activity types per phase */}
       <div className="space-y-2">
-        <h3 className="text-sm font-medium text-muted-foreground">Activity Types by Phase</h3>
+        <h3 className="text-sm font-medium text-muted-foreground">Activities/tasks by project</h3>
         {phases.map(phase => {
           const activities = activityTypes.filter(a => a.phaseId === phase.id);
           const isOpen = expandedPhase === phase.id;
@@ -128,13 +128,13 @@ export function PhasesTable() {
                   onToggleActive={(id) => {
                     toggleActivityTypeActive(id);
                     const a = activities.find(act => act.id === id);
-                    toast({ title: a?.isActive ? 'Activity deactivated' : 'Activity activated', description: a?.name });
+                    toast({ title: a?.isActive ? 'Activity/task deactivated' : 'Activity/task activated', description: a?.name });
                   }}
                   onEdit={openActivityEdit}
                   onAdd={() => openActivityAdd(phase.id)}
-                  addLabel="Add Activity Type"
-                  entityLabel="activity type"
-                  searchPlaceholder="Search activities…"
+                  addLabel="Add activity/task"
+                  entityLabel="activity/task"
+                  searchPlaceholder="Search activities/tasks…"
                   searchKeys={['name']}
                 />
               </CollapsibleContent>
