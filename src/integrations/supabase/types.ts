@@ -81,19 +81,34 @@ export type Database = {
       }
       deliverable_types: {
         Row: {
+          created_at: string
+          department_id: string | null
           id: string
           is_active: boolean
+          is_global: boolean
           name: string
+          sort_order: number
+          updated_at: string
         }
         Insert: {
+          created_at?: string
+          department_id?: string | null
           id: string
           is_active?: boolean
+          is_global?: boolean
           name: string
+          sort_order?: number
+          updated_at?: string
         }
         Update: {
+          created_at?: string
+          department_id?: string | null
           id?: string
           is_active?: boolean
+          is_global?: boolean
           name?: string
+          sort_order?: number
+          updated_at?: string
         }
         Relationships: []
       }
