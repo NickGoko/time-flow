@@ -1,47 +1,53 @@
 
 
-# Combined Implementation Plan: Department-Scoped Deliverables UI + Validation + L&D Hotfix
+# Plan: Tri-state Legend + Form Label Harmonisation
 
-## Current State
+## A) Files to change (5 total)
 
-- **Deliverables DB**: 42 rows seeded, each with `department_id`, `is_global`, `sort_order` — ready to use.
-- **UI**: Both `TimeEntryForm.tsx` and `DailyGridEntry.tsx` use the hardcoded `DELIVERABLE_TYPES` array from `src/types/index.ts`. They never query the DB.
-- **ReferenceDataContext**: Fetches `deliverable_types` from DB but only maps `{ id, name, isActive }` — ignores `department_id` and `is_global`.
-- **L&D hotfix**: HR L&D work area (`iwa-hr-1`) and 6 activity types already exist in DB. No DB changes needed. Internal filtering already works correctly via `getPhasesForProject` scoping by `owningDepartmentId`.
-
-## Files to Change (6 total, within all limits)
-
-| # | File | Changes |
+| # | File | What changes |
 |---|---|---|
-| 1 | `src/types/index.ts` | Add `departmentId` and `isGlobal` to `DeliverableTypeItem`. Add `getDeliverablesByDepartment` helper. |
-| 2 | `src/contexts/ReferenceDataContext.tsx` | Map `department_id`/`is_global` when fetching. Expose `getDeliverablesForDepartment(deptId)` getter. |
-| 3 | `src/components/TimeEntryForm.tsx` | Replace `DELIVERABLE_TYPES.map()` with `getDeliverablesForDepartment(currentUser.departmentId)`. Use DB `id` as value instead of hardcoded type string. Add empty-state message. Clear selected deliverable on user/department change. |
-| 4 | `src/components/DailyGridEntry.tsx` | Same change as TimeEntryForm — use DB deliverables filtered by department. Add empty-state. Clear on project change if deliverable no longer valid. |
-| 5 | `src/contexts/TimeEntriesContext.tsx` | In `addEntry`, validate that `deliverableType` matches a deliverable allowed for the user's department. Reject with toast error if mismatched. |
-| 6 | `src/data/seed.ts` | Update seed entries to use new deliverable IDs (e.g., `del-workshop` instead of `workshop`) so existing demo data doesn't break. |
+| 1 | `src/types/index.ts` | Add `maybeBillableMinutes` to `WeekSummary` |
+| 2 | `src/contexts/TimeEntriesContext.tsx` | Compute `maybeBillableMinutes` in `getWeekSummary` |
+| 3 | `src/components/WeeklyTimesheet.tsx` | Add "Maybe billable" legend item (lines 260-273); rename form labels in entry card display |
+| 4 | `src/components/TimeEntryForm.tsx` | Rename labels: "Workstream" → "Category", "Phase"/"Work area" → "Project", "Activity type" → "Activity/task", "Deliverable type" → "Deliverable type" (keep), "Deliverable description" → "Deliverable description" (keep) |
+| 5 | `src/components/DailyGridEntry.tsx` | Same label renames in grid placeholders |
 
-## Key Implementation Details
+## B) Data source for weekly totals + billable split
 
-### Deliverable dropdown (Prompt 3)
-- `ReferenceDataContext` exposes: `getDeliverablesForDepartment(deptId: string): DeliverableTypeItem[]` — returns items where `(departmentId === deptId || isGlobal) && isActive`, sorted by `sortOrder`.
-- Both forms use this instead of `DELIVERABLE_TYPES`. The dropdown value becomes the deliverable `id` (e.g., `del-fin-1`) instead of the old type string (`workshop`).
-- When the user switches in demo mode, the `currentUser.departmentId` changes, the `useMemo` recomputes, and if the selected deliverable isn't in the new list, it gets cleared.
-- Empty state: if filtered list is empty, show a disabled select with "No deliverables configured for your department. Contact Admin."
+- `getWeekSummary()` in `TimeEntriesContext.tsx` (lines ~110-145) computes `totalMinutes`, `billableMinutes`, `notBillableMinutes`. It does NOT compute `maybeBillableMinutes` — entries with `maybe_billable` status are currently unaccounted (they fall into neither billable nor notBillable).
+- Fix: add `maybeBillableMinutes` filter in `getWeekSummary`, add field to `WeekSummary` interface.
 
-### Backend validation (Prompt 4)
-- In `TimeEntriesContext.addEntry`: before inserting, check the deliverable exists in the filtered list for `currentUser.departmentId`. If not, `toast.error("Deliverable type is not allowed for your department.")` and return early.
-- Same check in `updateEntry` if `deliverableType` is being changed.
+## C) UI change points for legend
 
-### L&D + internal filtering hotfix (Prompt 5)
-- **No changes needed.** The DB already has HR L&D work area (`iwa-hr-1` / `phase-hr-1`) with 6 activity types. The `getPhasesForProject` function already filters by `owningDepartmentId`, so IT users see only IT work areas, HR users see HR work areas (including L&D). Verified via code inspection.
-- The only remaining concern is that existing seed `TimeEntry` objects use old hardcoded deliverable type strings (`workshop`, `other`, etc.) — these need updating to match the new DB IDs (`del-workshop`, `del-other`, etc.) in `seed.ts`.
+**Weekly legend** (WeeklyTimesheet.tsx lines 260-273): Currently two items with dot + label. Add third item between them:
+```
+Billable: Xh  ·  Maybe billable: Yh  ·  Not billable: Zh
+```
+- Billable dot: `bg-billable` (existing)
+- Maybe billable dot: `bg-warning` (matches existing `maybe_billable` color in `getBillableColor`)
+- Not billable dot: `bg-not-billable` (existing, but currently labeled "Non-billable" — rename to "Not billable" for consistency with enum)
 
-## Test Steps
+**Billable rate card** (PersonalDashboard.tsx): No change requested, stays as-is.
 
-1. **Switch to Finance user** → Deliverable dropdown shows: Payment pack, Reconciliation, Finance report, Compliance filing, Audit evidence pack, Other
-2. **Switch to IT user** → Dropdown shows: Ticket resolution, Account/access setup, Device setup/repair, System/network change, Guide/SOP, Other
-3. **Switch to HR user** → See HR deliverables. Select "L&D progress management" work area → see 6 activity types
-4. **Try submitting with wrong deliverable** (if somehow bypassed) → toast error "Deliverable type is not allowed for your department."
-5. **Switch user mid-form** → previously selected deliverable clears if not in new department's list
-6. **Department with no deliverables** → shows "No deliverables configured" message
+## D) Label mapping for form fields
+
+| Current label | New label | Files |
+|---|---|---|
+| `Workstream *` | `Category *` | TimeEntryForm L274, DailyGridEntry L333 placeholder |
+| `Phase *` / `Work area *` (dynamic via `phaseLabel`) | `Project *` | TimeEntryForm L305, DailyGridEntry L364 placeholder |
+| `Activity type *` | `Activity/task *` | TimeEntryForm L322, DailyGridEntry L379 placeholder |
+| `Task description *` | `Task description *` | No change needed |
+| `Deliverable type *` | `Deliverable type *` | No change needed |
+| `Deliverable description (optional)` | `Deliverable description` | Remove "(optional)" text, keep field optional |
+
+In DailyGridEntry, placeholders serve as labels. The `phaseLabel` variable (line 308) that switches between "Work area" and "Phase" will be replaced with a constant `"Project"`.
+
+## E) Test checklist
+
+1. **Tri-state legend**: Create entries with all three billable statuses in one week. Verify legend shows three items and X + Y + Z = total.
+2. **All-billable week**: Maybe = 0h, Not billable = 0h displayed.
+3. **Label check (single entry)**: Open "Add entry" dialog — verify labels read "Category", "Project", "Activity/task", "Task description", "Deliverable type", "Deliverable description".
+4. **Label check (grid)**: Switch to "Multiple entries" — verify same harmonised labels in placeholders.
+5. **Department switch**: Switch users — verify dropdown contents unchanged, only labels differ.
+6. **Submit flow**: Save an entry in both modes — no regressions.
 
