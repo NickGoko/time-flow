@@ -1,76 +1,103 @@
 
 
-# Plan: Scope Selector + Scoped Team Summary Table
+# Plan: Operational "Data Quality" Panel — Blocked-by-Cap Event Logging
 
-## Overview
+## Current state
 
-Add a scope selector (My / Department / Org) to the Reports Overview page. All existing data-derive functions receive a pre-filtered `entries` array and `users` array based on scope. The TeamSummaryTable is only shown for Department and Org scopes. Sorting by hours descending is added.
+The 4 operational insight cards already exist in `AdminReportsOverview.tsx`:
+1. **Maybe billable** — works (derived from entries)
+2. **Data quality / backdated** — works (derived from entries)
+3. **Weeks not submitted** — works (derived from week statuses)
+4. **Blocked by cap** — hardcoded to `0` (no event source)
 
-## Current architecture
+Cap validation exists client-side in `TimeEntryForm.tsx` (line 181) and `DailyGridEntry.tsx` (line 188), but blocked attempts are never recorded.
 
-All report components (`MetricCards`, `WeeklyChart`, `TeamSummaryTable`, `CohortWidget`) independently call `getAllEntries()` and `allUsers` from context, then pass to derive functions in `reportsMockData.ts`. To add scoping, the parent page must filter entries/users and pass them down, rather than each child fetching independently.
+## What needs to happen
+
+1. Create a `validation_events` table in the database for production use
+2. Add in-memory cap-block event logging to `TimeEntriesContext` (for demo mode, which is currently active)
+3. Log a cap-block event when the 10h validation fires in both entry forms
+4. Wire the count into the existing "Blocked by cap" card, filtered by scope + range
 
 ## Files to change (5)
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/pages/AdminReportsOverview.tsx` | Add scope state + selector UI. Compute `scopedEntries` and `scopedUsers`. Pass them as props to child components. |
-| 2 | `src/components/admin/MetricCards.tsx` | No change (already receives `metrics` as props). |
-| 3 | `src/components/admin/WeeklyChart.tsx` | Accept optional `entries` prop; if provided, use it instead of `getAllEntries()`. |
-| 4 | `src/components/admin/TeamSummaryTable.tsx` | Accept `entries`, `users` props. Add sortable columns (hours desc default). Only rendered when scope is not "my". |
-| 5 | `src/components/admin/CohortWidget.tsx` | Accept optional `entries`, `users` props. |
+| 1 | `supabase/migrations/<new>.sql` | Create `validation_events` table with RLS |
+| 2 | `src/contexts/TimeEntriesContext.tsx` | Add `validationEvents` state, `logCapBlock(userId, date)` function, expose both |
+| 3 | `src/components/TimeEntryForm.tsx` | Call `logCapBlock` when `wouldExceedCap` triggers on submit |
+| 4 | `src/components/DailyGridEntry.tsx` | Call `logCapBlock` when cap check fails on save |
+| 5 | `src/pages/AdminReportsOverview.tsx` | Compute `blockedByCap` from `validationEvents` filtered by scope + range; replace hardcoded `0` |
 
-## Scope selector UI
+## Database table
 
-Segmented button group (reuse existing `Button` pattern like the range selector):
+```sql
+CREATE TABLE public.validation_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type text NOT NULL DEFAULT 'cap_blocked',
+  user_id uuid NOT NULL,
+  entry_date date NOT NULL,
+  metadata jsonb DEFAULT '{}',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
 
+ALTER TABLE public.validation_events ENABLE ROW LEVEL SECURITY;
+
+-- Users can insert their own events
+CREATE POLICY "Users can insert own validation_events"
+  ON public.validation_events FOR INSERT
+  WITH CHECK (user_id = auth.uid());
+
+-- Admins + department scoped users can read
+CREATE POLICY "validation_events_select"
+  ON public.validation_events FOR SELECT
+  USING (
+    user_id = auth.uid()
+    OR has_permission(auth.uid(), 'time:read_all')
+    OR (has_permission(auth.uid(), 'time:read_department')
+        AND is_department_scoped(auth.uid(), (SELECT department_id FROM profiles WHERE id = validation_events.user_id)))
+  );
 ```
-[My] [Department] [Organisation]
-```
 
-- **My**: always visible. Filters `entries` to `userId === currentUser.id`, `users` to just current user.
-- **Department**: visible only if `currentUser.appRole` is `hod`, `leadership`, `admin`, or `super_admin`. For HOD: uses `currentUser.managedDepartments` to filter. If multiple departments, show a `Select` dropdown beside scope selector. For admin/leadership: show all departments in dropdown.
-- **Organisation**: visible only if `appRole` is `leadership`, `admin`, or `super_admin`. No filtering.
-
-Default scope: "My" for employees/HODs, "Organisation" for admin/leadership.
-
-## Scope filtering logic (in AdminReportsOverview)
+## In-memory logging (demo mode)
 
 ```typescript
-const scopedEntries = useMemo(() => {
-  if (scope === 'my') return entries.filter(e => e.userId === currentUser.id);
-  if (scope === 'department') return entries.filter(e => {
-    const user = allUsers.find(u => u.id === e.userId);
-    return user && selectedDepartments.includes(user.departmentId);
-  });
-  return entries; // org
-}, [scope, entries, currentUser, allUsers, selectedDepartments]);
+// In TimeEntriesContext
+interface ValidationEvent {
+  id: string;
+  eventType: string;
+  userId: string;
+  entryDate: string;
+  createdAt: string;
+}
 
-const scopedUsers = useMemo(() => {
-  if (scope === 'my') return allUsers.filter(u => u.id === currentUser.id);
-  if (scope === 'department') return allUsers.filter(u => selectedDepartments.includes(u.departmentId));
-  return allUsers;
-}, [scope, allUsers, currentUser, selectedDepartments]);
+const [validationEvents, setValidationEvents] = useState<ValidationEvent[]>([]);
+
+const logCapBlock = useCallback((userId: string, entryDate: string) => {
+  setValidationEvents(prev => [...prev, {
+    id: `ve-${Date.now()}`,
+    eventType: 'cap_blocked',
+    userId,
+    entryDate,
+    createdAt: new Date().toISOString(),
+  }]);
+}, []);
 ```
 
-## TeamSummaryTable enhancements
+## Wiring in entry forms
 
-- Accept `entries: TimeEntry[]` and `users: User[]` as props (no longer fetches from context).
-- Default sort: hours descending (currently alphabetical).
-- Add click-to-sort on column headers (simple state toggle, no library needed).
-- Only rendered when `scope !== 'my'` (controlled by parent).
+In `TimeEntryForm.tsx` handleSubmit, when `wouldExceedCap` is true, call `logCapBlock(currentUser.id, dateStr)` before returning.
 
-## RBAC enforcement
+In `DailyGridEntry.tsx` handleSave, when cap check fails, call `logCapBlock(currentUser.id, selectedDate)`.
 
-Backend enforcement is already in place: `time_entries` RLS restricts SELECT to own entries + `time:read_all` + `time:read_department` with `is_department_scoped()`. The scope selector only controls which subset the UI requests; the backend will not return unauthorized rows regardless. The UI hides scope options the user cannot use.
+## Wiring in AdminReportsOverview
+
+Compute `blockedByCap` from `validationEvents` filtered by scoped user IDs and date range, replacing the hardcoded `insights.blockedByCap`. Remove the "Preview" badge from that card.
 
 ## Acceptance criteria
 
-1. Employee sees only "My" scope option. Cannot select Department or Org.
-2. HOD sees "My" and "Department". Department dropdown shows only their managed departments.
-3. Admin/Leadership/Super_admin sees all three scopes. Department dropdown shows all departments.
-4. TeamSummaryTable hidden in "My" scope, visible in Department/Org.
-5. TeamSummaryTable sorts by hours descending by default.
-6. Metric cards, chart, insights, and cohort widget all reflect the selected scope.
-7. Values in TeamSummaryTable reconcile with headline metric totals for the same scope and range.
+1. All 4 insight cards update when switching scope and time range
+2. "Blocked by cap" increments when you attempt to save an entry that exceeds 10h
+3. The count resets to 0 for scopes/ranges with no cap-block events
+4. `validation_events` table exists in the database with correct RLS for production use
 
