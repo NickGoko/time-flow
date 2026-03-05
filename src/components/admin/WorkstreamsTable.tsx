@@ -72,7 +72,7 @@ export function WorkstreamsTable() {
           toggleProjectActive(id);
           const proj = projects.find(p => p.id === id);
           toast({
-            title: proj?.isActive ? 'Workstream deactivated' : 'Workstream activated',
+            title: proj?.isActive ? 'Category deactivated' : 'Category activated',
             description: proj?.name,
           });
         }}
@@ -84,9 +84,9 @@ export function WorkstreamsTable() {
           setEditing(null);
           setDialogOpen(true);
         }}
-        addLabel="Add Workstream"
-        entityLabel="workstream"
-        searchPlaceholder="Search workstreams…"
+        addLabel="Add category"
+        entityLabel="category"
+        searchPlaceholder="Search categories…"
         searchKeys={['name', 'code']}
       />
       <WorkstreamDialog

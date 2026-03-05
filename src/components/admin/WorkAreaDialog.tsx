@@ -43,7 +43,7 @@ export function WorkAreaDialog({ open, onOpenChange, editing, onSave }: WorkArea
     <EditDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? 'Edit Work Area' : 'Add Work Area'}
+      title={editing ? 'Edit work area' : 'Add work area'}
     >
       <div className="space-y-4 py-2">
         <div className="space-y-2">
@@ -66,10 +66,10 @@ export function WorkAreaDialog({ open, onOpenChange, editing, onSave }: WorkArea
         </div>
 
         <div className="space-y-2">
-          <Label>Phase</Label>
+          <Label>Project</Label>
           <Select value={phaseId} onValueChange={setPhaseId}>
             <SelectTrigger>
-              <SelectValue placeholder="Select phase" />
+              <SelectValue placeholder="Select project" />
             </SelectTrigger>
             <SelectContent>
               {activePhases.map(p => (

@@ -104,7 +104,7 @@ export function WorkstreamDialog({ open, onOpenChange, editing }: WorkstreamDial
     <EditDialog
       open={open}
       onOpenChange={onOpenChange}
-      title={editing ? 'Edit Workstream' : 'Add Workstream'}
+      title={editing ? 'Edit category' : 'Add category'}
     >
       <div className="space-y-4">
         <div className="space-y-2">

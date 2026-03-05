@@ -54,8 +54,8 @@ export function PhaseDialog({
   };
 
   const title = mode === 'phase'
-    ? (editingItem ? 'Edit Phase' : 'Add Phase')
-    : (editingItem ? 'Edit Activity Type' : 'Add Activity Type');
+    ? (editingItem ? 'Edit project' : 'Add project')
+    : (editingItem ? 'Edit activity/task' : 'Add activity/task');
 
   return (
     <EditDialog open={open} onOpenChange={onOpenChange} title={title}>
@@ -66,10 +66,10 @@ export function PhaseDialog({
         </div>
         {mode === 'activityType' && (
           <div className="space-y-2">
-            <Label>Phase</Label>
+            <Label>Project</Label>
             <Select value={phaseId} onValueChange={setPhaseId}>
               <SelectTrigger>
-                <SelectValue placeholder="Select phase…" />
+                <SelectValue placeholder="Select project…" />
               </SelectTrigger>
               <SelectContent>
                 {phases.map(p => (
