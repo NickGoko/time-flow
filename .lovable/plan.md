@@ -1,53 +1,63 @@
 
 
-# Plan: Tri-state Legend + Form Label Harmonisation
+# Plan: Harmonise Labels in Admin Reference Data & Related Components
 
-## A) Files to change (5 total)
+The entry form labels are already correct (Category, Project, Activity/task). The admin Reference Data page and its sub-components still use old terminology (Workstreams, Phases, Work Areas, Activity Types). These need renaming to match the harmonised labels.
 
-| # | File | What changes |
+## Label Mapping
+
+| Current | New |
+|---|---|
+| "Workstreams" (tab) | "Categories" |
+| "Workstreams" (section heading) | "Categories" |
+| "Add Workstream" / "workstream" entity | "Add category" / "category" |
+| "Search workstreams…" | "Search categories…" |
+| "Workstream deactivated/activated" (toast) | "Category deactivated/activated" |
+| "Phases" (tab) | "Projects" |
+| "Phase Name" (column) | "Project name" |
+| "Add Phase" / "phase" entity | "Add project" / "project" |
+| "Search phases…" | "Search projects…" |
+| "Phase deactivated/activated" (toast) | "Project deactivated/activated" |
+| "Phase updated/added" (toast) | "Project updated/added" |
+| "Activity Types by Phase" (heading) | "Activities/tasks by project" |
+| "Activity Type Name" (column) | "Activity/task name" |
+| "Add Activity Type" / "activity type" entity | "Add activity/task" / "activity/task" |
+| "Activity type updated/added" (toast) | "Activity/task updated/added" |
+| "Activity deactivated/activated" (toast) | "Activity/task deactivated/activated" |
+| "Work Areas" (tab) | "Work areas" (sentence case only) |
+| "Add Work Area" / "work area" entity | "Add work area" / "work area" (keep) |
+| "Edit Work Area" / "Add Work Area" (dialog) | "Edit work area" / "Add work area" |
+| "Edit Phase" / "Add Phase" (PhaseDialog) | "Edit project" / "Add project" |
+| "Edit Activity Type" / "Add Activity Type" (PhaseDialog) | "Edit activity/task" / "Add activity/task" |
+| "Select phase…" placeholder | "Select project…" |
+| "Phase" label in PhaseDialog | "Project" |
+| "Phase" label in WorkAreaDialog | "Project" |
+| "Select phase" placeholder in WorkAreaDialog | "Select project" |
+| WorkstreamDialog title "Edit/Add Workstream" | "Edit/Add category" |
+
+Also in `TimeEntryForm.tsx` and `DailyGridEntry.tsx`: remove leftover comments referencing old names (e.g. `/* Workstream (grouped) */`, `/* Phase / Work area */`).
+
+## Files to Change (6)
+
+| # | File | Changes |
 |---|---|---|
-| 1 | `src/types/index.ts` | Add `maybeBillableMinutes` to `WeekSummary` |
-| 2 | `src/contexts/TimeEntriesContext.tsx` | Compute `maybeBillableMinutes` in `getWeekSummary` |
-| 3 | `src/components/WeeklyTimesheet.tsx` | Add "Maybe billable" legend item (lines 260-273); rename form labels in entry card display |
-| 4 | `src/components/TimeEntryForm.tsx` | Rename labels: "Workstream" → "Category", "Phase"/"Work area" → "Project", "Activity type" → "Activity/task", "Deliverable type" → "Deliverable type" (keep), "Deliverable description" → "Deliverable description" (keep) |
-| 5 | `src/components/DailyGridEntry.tsx` | Same label renames in grid placeholders |
+| 1 | `src/pages/admin/AdminReferenceData.tsx` | Tab labels: Workstreams→Categories, Phases→Projects, Work Areas→Work areas. Section heading "Workstreams"→"Categories". |
+| 2 | `src/components/admin/WorkstreamsTable.tsx` | addLabel, entityLabel, searchPlaceholder, toast messages. |
+| 3 | `src/components/admin/PhasesTable.tsx` | Column headers, addLabel, entityLabel, searchPlaceholder, toast messages, "Activity Types by Phase" heading. |
+| 4 | `src/components/admin/PhaseDialog.tsx` | Dialog title, "Phase" label → "Project", placeholder. |
+| 5 | `src/components/admin/WorkAreaDialog.tsx` | Dialog title sentence case, "Phase" label → "Project", placeholder. |
+| 6 | `src/components/admin/WorkstreamDialog.tsx` | Dialog title. |
 
-## B) Data source for weekly totals + billable split
+## No Logic Changes
 
-- `getWeekSummary()` in `TimeEntriesContext.tsx` (lines ~110-145) computes `totalMinutes`, `billableMinutes`, `notBillableMinutes`. It does NOT compute `maybeBillableMinutes` — entries with `maybe_billable` status are currently unaccounted (they fall into neither billable nor notBillable).
-- Fix: add `maybeBillableMinutes` filter in `getWeekSummary`, add field to `WeekSummary` interface.
+Only display strings change. No filtering, no data model, no routing changes.
 
-## C) UI change points for legend
+## Test Checklist
 
-**Weekly legend** (WeeklyTimesheet.tsx lines 260-273): Currently two items with dot + label. Add third item between them:
-```
-Billable: Xh  ·  Maybe billable: Yh  ·  Not billable: Zh
-```
-- Billable dot: `bg-billable` (existing)
-- Maybe billable dot: `bg-warning` (matches existing `maybe_billable` color in `getBillableColor`)
-- Not billable dot: `bg-not-billable` (existing, but currently labeled "Non-billable" — rename to "Not billable" for consistency with enum)
-
-**Billable rate card** (PersonalDashboard.tsx): No change requested, stays as-is.
-
-## D) Label mapping for form fields
-
-| Current label | New label | Files |
-|---|---|---|
-| `Workstream *` | `Category *` | TimeEntryForm L274, DailyGridEntry L333 placeholder |
-| `Phase *` / `Work area *` (dynamic via `phaseLabel`) | `Project *` | TimeEntryForm L305, DailyGridEntry L364 placeholder |
-| `Activity type *` | `Activity/task *` | TimeEntryForm L322, DailyGridEntry L379 placeholder |
-| `Task description *` | `Task description *` | No change needed |
-| `Deliverable type *` | `Deliverable type *` | No change needed |
-| `Deliverable description (optional)` | `Deliverable description` | Remove "(optional)" text, keep field optional |
-
-In DailyGridEntry, placeholders serve as labels. The `phaseLabel` variable (line 308) that switches between "Work area" and "Phase" will be replaced with a constant `"Project"`.
-
-## E) Test checklist
-
-1. **Tri-state legend**: Create entries with all three billable statuses in one week. Verify legend shows three items and X + Y + Z = total.
-2. **All-billable week**: Maybe = 0h, Not billable = 0h displayed.
-3. **Label check (single entry)**: Open "Add entry" dialog — verify labels read "Category", "Project", "Activity/task", "Task description", "Deliverable type", "Deliverable description".
-4. **Label check (grid)**: Switch to "Multiple entries" — verify same harmonised labels in placeholders.
-5. **Department switch**: Switch users — verify dropdown contents unchanged, only labels differ.
-6. **Submit flow**: Save an entry in both modes — no regressions.
+1. Open Reference Data page — tabs read "Categories", "Projects", "Work areas", "Deliverables"
+2. Categories tab: section heading "Categories", table shows categories, add button says "Add category"
+3. Projects tab: column "Project name", expandable section "Activities/tasks by project", nested table column "Activity/task name"
+4. Add/edit dialogs show harmonised titles
+5. Toast messages use new terminology
+6. Entry form labels unchanged (already correct)
 
