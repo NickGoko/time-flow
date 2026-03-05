@@ -1,129 +1,113 @@
 
 
-# Combined Plan: Bricks 4, 5, and 6
+# Diagnosis: Deliverable Type Wrong Options
 
----
+## Root Cause
 
-## BRICK 4: Progress Labels + Overtime Display
+**Deliverables are a flat, global, hardcoded list** — not department-scoped.
 
-### A) Where progress is computed today
+The `TimeEntryForm.tsx` and `DailyGridEntry.tsx` both render deliverable options from `DELIVERABLE_TYPES` — a hardcoded array in `src/types/index.ts` containing 6 items: Workshop, Reporting, Training, Event, Case study, Other. These are Impact/consulting deliverables. Every department sees the same list regardless of their function.
 
-| Location | File | Lines | Current Display |
-|---|---|---|---|
-| Weekly progress bar | `WeeklyTimesheet.tsx` | 95-96, 174-178 | `{hours}h / 40h` |
-| Daily tiles | `WeeklyTimesheet.tsx` | 228-236 | `{hours}h` only |
-| Selected day header | `WeeklyTimesheet.tsx` | 276-278 | `{hours}h / {percent}%` |
-| Grid sticky header | `DailyGridEntry.tsx` | 236-238 | `Logged: {hours}h / 10h` |
-| Employee insights (today) | `EmployeeInsights.tsx` | 115-118 | `{hours}h / 8h target` |
-| Employee insights (week) | `EmployeeInsights.tsx` | 135-138 | `{hours}h / 40h` |
+The DB table `deliverable_types` exists but has only these same 6 global rows with no `department_id` column. The admin CRUD page (`DeliverablesTable.tsx`) manages them as a flat list.
 
-### B) Plan (3 files)
-
-1. **`src/components/WeeklyTimesheet.tsx`**:
-   - Weekly bar: change label to `Xh / 40h (Y%)`. If >100%, clamp bar at 100%, append `Overtime +Zh`.
-   - Daily tiles: change to `Xh / 8h`. If >=100%, show green check icon. If >100%, show `+Zh OT` below.
-   - Selected day header: `Xh / 8h (Y%)`, overtime label if >100%.
-
-2. **`src/components/DailyGridEntry.tsx`**:
-   - Sticky header: `Logged: Xh / 8h (Y%)` with overtime indicator.
-
-3. **`src/pages/EmployeeInsights.tsx`**:
-   - Today card: `Xh / 8h (Y%)` with overtime if applicable.
-   - Week card: same pattern.
-
-### C) Test script
-- 0h logged: `0h / 8h (0%)`
-- 4h logged: `4h / 8h (50%)`
-- 8h logged: `8h / 8h (100%)`
-- 10h logged (travel): `10h / 8h (125%) · Overtime +2h`
-- Weekly 45h: `45h / 40h (113%) · Overtime +5h`
-
----
-
-## BRICK 5: Traffic Light Colours
-
-### A) Progress bar component
-
-The progress bar is NOT the shadcn `<Progress>` component in these views. It's a custom `div` with inline width in `WeeklyTimesheet.tsx` lines 180-188. Daily tiles use text color classes (lines 228-234).
-
-### B) Plan (3 files, subset of Brick 4 files)
-
-1. **`src/lib/utils.ts`**: Add helper `getProgressColor(percent: number): string` returning:
-   - `<75` → `bg-destructive` (red) / `text-destructive`
-   - `75–90` → `bg-warning` (yellow) / `text-warning`  
-   - `90–100` → `bg-success` (green) / `text-success`
-   - `>100` → `bg-success` (green, overtime is fine once target met)
-
-2. **`src/components/WeeklyTimesheet.tsx`**: Apply to weekly bar + daily tile text colors + day header.
-
-3. **`src/components/DailyGridEntry.tsx`**: Apply to grid header progress text.
-
-4. **`src/pages/EmployeeInsights.tsx`**: Apply to today/week progress.
-
-### C) Test script
-- 50% (4h/8h): red bar + red text
-- 80% (6.4h/8h): yellow bar + yellow text
-- 95% (7.6h/8h): green bar + green text
-- 112% (9h/8h): green bar, "Overtime +1h"
-
----
-
-## BRICK 6: Department Filtering Bug + L&D
-
-### A) Root cause hypothesis
-
-The `getGroupedWorkstreams` function in `ReferenceDataContext.tsx` (lines 152-181) correctly filters external projects via `project_department_access`. However, the **data itself** is the issue:
-
-Current `project_department_access` only grants external project access to: `dept-bd`, `dept-consulting`, `dept-operations` (plus `proj-leave` for all).
-
-**Missing access**: departments like `dept-it`, `dept-finance`, `dept-hr`, `dept-comms`, `dept-mel` have NO access to external projects (except Leave). If these departments should support external projects (e.g., IT supporting Flagship), entries are missing from `project_department_access`.
-
-The bug "IT only sees Impact external project options" likely means an IT user was previously assigned to `dept-consulting` or there's a stale state. The fix is to ensure correct `project_department_access` rows exist.
-
-For `getPhasesForProject` (line 135): when an external project is selected, it returns ALL `EXTERNAL_PHASE_IDS` phases — this is correct because external projects share the same phase set. Internal projects correctly scope to department-specific work areas.
-
-### B) Exact files involved
+## Files Involved
 
 | # | File | Role |
 |---|---|---|
-| 1 | `src/contexts/ReferenceDataContext.tsx` | `getGroupedWorkstreams`, `getPhasesForProject` — filtering logic |
-| 2 | DB: `project_department_access` | Access control data |
-| 3 | DB: `projects`, `internal_work_areas` | Missing L&D entries |
+| 1 | `src/types/index.ts` | Hardcoded `DELIVERABLE_TYPES` array + `DeliverableType` union type |
+| 2 | `src/components/TimeEntryForm.tsx` | Uses `DELIVERABLE_TYPES.map()` for dropdown |
+| 3 | `src/components/DailyGridEntry.tsx` | Same hardcoded list for grid dropdown |
+| 4 | `src/contexts/ReferenceDataContext.tsx` | Fetches `deliverable_types` from DB but only for admin CRUD |
+| 5 | `src/components/admin/DeliverablesTable.tsx` | Admin CRUD for deliverable types |
+| 6 | `src/components/admin/DeliverableDialog.tsx` | Add/edit dialog |
+| 7 | `src/contexts/UserContext.tsx` | Current user + department_id source |
 
-### C) Plan (≤4 files + SQL migration)
+## Current User Source
 
-1. **SQL migration**: Insert missing `project_department_access` rows so all departments can access support-type external projects where appropriate. Add L&D-related reference data:
-   - If L&D is a separate concern, add work areas under existing departments (e.g., `iwa-hr-10` "L&D coordination" under `dept-hr`, or create a cross-cutting L&D phase).
-   - Based on existing data, HR already has `iwa-hr-1` "L&D progress management". The gap may be L&D activity types or work areas for other departments.
+The authenticated user's `department_id` comes from the `profiles` table, loaded in `UserContext.tsx`. This is correct and department-aware.
 
-2. **`src/contexts/ReferenceDataContext.tsx`**: No code change needed if the data fix resolves it. However, add a safety improvement: if a user's `departmentId` is empty/null, show all external projects (graceful fallback instead of showing nothing).
+## DB Confirmation
 
-3. **Verify `getPhasesForProject`** handles the `internal_department` path correctly — it does, via work area → phase mapping.
-
-### D) Test script
-- Login as IT user (`dept-it`) → see IT internal workstream + Leave + any newly-granted external projects
-- Login as Finance user (`dept-finance`) → see Finance internal workstream + Leave + any newly-granted external projects
-- Select IT internal workstream → see only IT work areas (User support, Laptop servicing, etc.)
-- Select an external project → see generic phases (Inception, Recruitment, Workshops, etc.)
-- Check L&D options appear where added
+The `deliverable_types` table has columns: `id` (text PK), `name` (text), `is_active` (boolean). **No `department_id` or `is_global` column exists.** Only 6 rows (del-workshop, del-reporting, del-training, del-event, del-case_study, del-other).
 
 ---
 
-## Combined File Count
+# Implementation Plan: Department-Scoped Deliverables (DB Only)
 
-| # | File | Bricks |
-|---|---|---|
-| 1 | `src/lib/utils.ts` | 5 |
-| 2 | `src/components/WeeklyTimesheet.tsx` | 4, 5 |
-| 3 | `src/components/DailyGridEntry.tsx` | 4, 5 |
-| 4 | `src/pages/EmployeeInsights.tsx` | 4, 5 |
-| 5 | `src/contexts/ReferenceDataContext.tsx` | 6 |
-| 6 | SQL migration | 6 |
+## Step 1: Migration — Alter `deliverable_types` table
 
-Total: **5 code files + 1 migration** (within all brick limits).
+Add columns to existing table:
+- `department_id` (text, nullable — null means global)
+- `is_global` (boolean, default false)
+- `sort_order` (integer, default 0)
+- `created_at` (timestamptz, default now())
+- `updated_at` (timestamptz, default now())
 
-## Implementation Order
-1. Brick 5 first (add `getProgressColor` util — needed by Brick 4)
-2. Brick 4 (progress labels + overtime using the color helper)
-3. Brick 6 (data fix via migration + optional context safety)
+Mark existing 6 rows as `department_id = 'dept-consulting'` (Impact) since they match Impact deliverables.
+
+Add indexes on `(department_id, is_active)` and `(is_global, is_active)`.
+
+## Step 2: Seed department-specific deliverables
+
+Insert rows per department (7 departments × 6 items = 42 new rows):
+
+| Dept | Items |
+|---|---|
+| `dept-finance` | Payment pack, Reconciliation, Finance report, Compliance filing, Audit evidence pack, Other |
+| `dept-hr` | Recruitment pack, Onboarding pack, Payroll input, People policy document, Performance record, Other |
+| `dept-comms` | Content piece, Design asset, Media release, Website/newsletter update, Event communications pack, Other |
+| `dept-it` | Ticket resolution, Account/access setup, Device setup/repair, System/network change, Guide/SOP, Other |
+| `dept-bd` | Opportunity note, Concept note, Proposal, Pitch deck, Engagement record, Other |
+| `dept-mel` | Data collection tool, Dataset, Analysis brief, Indicator update, Learning note, Other |
+| `dept-consulting` | Already exists (Workshop, Reporting, Training, Event, Case study, Other) — update with department_id |
+
+## Migration SQL
+
+```sql
+-- Add department scoping columns
+ALTER TABLE public.deliverable_types
+  ADD COLUMN IF NOT EXISTS department_id text,
+  ADD COLUMN IF NOT EXISTS is_global boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS sort_order integer NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS updated_at timestamptz NOT NULL DEFAULT now();
+
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_deliverable_types_dept_active
+  ON public.deliverable_types (department_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_deliverable_types_global_active
+  ON public.deliverable_types (is_global, is_active);
+
+-- Tag existing rows as Impact (dept-consulting)
+UPDATE public.deliverable_types
+  SET department_id = 'dept-consulting', sort_order = 
+    CASE id
+      WHEN 'del-workshop' THEN 1
+      WHEN 'del-reporting' THEN 2
+      WHEN 'del-training' THEN 3
+      WHEN 'del-event' THEN 4
+      WHEN 'del-case_study' THEN 5
+      WHEN 'del-other' THEN 6
+    END
+  WHERE id IN ('del-workshop','del-reporting','del-training','del-event','del-case_study','del-other');
+```
+
+Then seed 36 new rows for the other 6 departments via INSERT.
+
+## Row Counts
+
+| Department | Rows |
+|---|---|
+| dept-consulting (Impact) | 6 (existing, updated) |
+| dept-finance | 6 |
+| dept-hr | 6 |
+| dept-comms | 6 |
+| dept-it | 6 |
+| dept-bd | 6 |
+| dept-mel | 6 |
+| **Total** | **42** |
+
+## No UI Changes
+
+This plan only modifies the database. The UI will continue to use the hardcoded `DELIVERABLE_TYPES` until a follow-up brick updates the dropdown queries to filter by `currentUser.departmentId`.
 
