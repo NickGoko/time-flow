@@ -72,7 +72,7 @@ interface DailyGridEntryProps {
 
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries, logCapBlock } = useTimeEntries();
   const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects, getDeliverablesForDepartment } = useReferenceData();
   const deptDeliverables = useMemo(
     () => getDeliverablesForDepartment(currentUser.departmentId),
@@ -187,6 +187,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
 
     if (existingNonTravelMinutes + newNonTravelMinutes > MAX_DAILY_MINUTES) {
       hasErrors = true;
+      logCapBlock(currentUser.id, selectedDate);
       const projectedNonTravel = existingNonTravelMinutes + newNonTravelMinutes;
       setGlobalError(
         `Non-travel daily total would be ${formatHours(projectedNonTravel)}h, ` +
