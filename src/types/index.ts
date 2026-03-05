@@ -117,6 +117,7 @@ export interface WeekSummary {
   weekStartDate: string;
   totalMinutes: number;
   billableMinutes: number;
+  maybeBillableMinutes: number;
   notBillableMinutes: number;
   entriesByDay: Record<string, TimeEntryWithDetails[]>;
   status: WeekStatus | null;

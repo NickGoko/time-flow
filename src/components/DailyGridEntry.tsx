@@ -330,7 +330,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div>
           <Select value={row.projectId} onValueChange={v => onUpdate(row.id, 'projectId', v)}>
             <SelectTrigger className={row.errors.projectId ? 'border-destructive' : ''}>
-              <SelectValue placeholder="Workstream *" />
+              <SelectValue placeholder="Category *" />
             </SelectTrigger>
             <SelectContent>
               {(grouped.external.length > 0 || grouped.leave.length > 0) && (
@@ -361,7 +361,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div>
           <Select value={row.phaseId} onValueChange={v => onUpdate(row.id, 'phaseId', v)} disabled={isLeave}>
             <SelectTrigger className={row.errors.phaseId ? 'border-destructive' : ''}>
-              <SelectValue placeholder={`${phaseLabel} *`} />
+              <SelectValue placeholder="Project *" />
             </SelectTrigger>
             <SelectContent>
               {(row.projectId ? getPhasesForProject(row.projectId) : []).map(p => (
@@ -376,7 +376,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div>
           <Select value={row.activityTypeId} onValueChange={v => onUpdate(row.id, 'activityTypeId', v)} disabled={!row.phaseId}>
             <SelectTrigger className={row.errors.activityTypeId ? 'border-destructive' : ''}>
-              <SelectValue placeholder={row.phaseId ? 'Activity *' : `Select ${phaseLabel.toLowerCase()} first`} />
+              <SelectValue placeholder={row.phaseId ? 'Activity/task *' : 'Select project first'} />
             </SelectTrigger>
             <SelectContent>
               {activities.map(a => (
@@ -409,7 +409,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
               ) : (
                 <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
                   <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
-                    <SelectValue placeholder="Deliverable *" />
+                    <SelectValue placeholder="Deliverable type *" />
                   </SelectTrigger>
                   <SelectContent>
                     {deptDeliverables.map(d => (
@@ -422,7 +422,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
             </div>
             <div>
               <Input
-                placeholder="Deliverable description (optional)"
+                placeholder="Deliverable description"
                 value={row.deliverableDescription}
                 onChange={e => onUpdate(row.id, 'deliverableDescription', e.target.value)}
               />
