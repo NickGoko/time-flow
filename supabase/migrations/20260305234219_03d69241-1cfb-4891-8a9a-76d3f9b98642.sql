@@ -1,0 +1,1 @@
+ALTER VIEW public.time_entries_enriched SET (security_invoker = on);
