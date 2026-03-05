@@ -10,7 +10,7 @@ import { Download, ChevronDown } from 'lucide-react';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
-import { getBillableLabel, getDeliverableLabel, getWorkstreamTypeLabel } from '@/types';
+import { getBillableLabel, getWorkstreamTypeLabel } from '@/types';
 
 function escapeCSV(value: string): string {
   if (!value) return '';
@@ -22,7 +22,7 @@ function escapeCSV(value: string): string {
 
 export function ExportPanel() {
   const { getAllEntries } = useTimeEntries();
-  const { departments, projects, phases, activityTypes, internalWorkAreas } = useReferenceData();
+  const { departments, projects, phases, activityTypes, internalWorkAreas, deliverableTypes } = useReferenceData();
   const { allUsersList } = useAuthenticatedUser();
 
   const today = new Date();
@@ -111,7 +111,7 @@ export function ExportPanel() {
         phaseName,
         activityName,
         entry.taskDescription,
-        getDeliverableLabel(entry.deliverableType),
+        deliverableTypes.find(d => d.id === entry.deliverableType)?.name ?? entry.deliverableType,
         entry.deliverableDescription ?? '',
         hoursDecimal,
         getBillableLabel(entry.billableStatus),

@@ -15,10 +15,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import {
   BillableStatus,
-  DeliverableType,
   getBillableLabel,
-  getDeliverableLabel,
-  DELIVERABLE_TYPES,
   BILLABLE_STATUSES,
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
@@ -32,6 +29,7 @@ import {
   LEAVE_PROJECT_ID,
   ABSENCE_PHASE_ID,
   LEAVE_DAY_ACTIVITY_ID,
+  DeliverableTypeItem,
 } from '@/types';
 import { parseLocalDate } from '@/data/seed';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
@@ -45,7 +43,7 @@ interface GridRow {
   phaseId: string;
   activityTypeId: string;
   taskDescription: string;
-  deliverableType: DeliverableType | '';
+  deliverableType: string;
   deliverableDescription: string;
   hours: number;
   minutes: number;
@@ -75,7 +73,11 @@ interface DailyGridEntryProps {
 export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) {
   const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
-  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
+  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects, getDeliverablesForDepartment } = useReferenceData();
+  const deptDeliverables = useMemo(
+    () => getDeliverablesForDepartment(currentUser.departmentId),
+    [currentUser.departmentId, getDeliverablesForDepartment],
+  );
   const entries = getOwnEntries();
   const [rows, setRows] = useState<GridRow[]>([createEmptyRow()]);
   const [globalError, setGlobalError] = useState<string | null>(null);
@@ -117,7 +119,8 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
           updated.hours = 8;
           updated.minutes = 0;
           updated.billableStatus = 'not_billable';
-          updated.deliverableType = 'other';
+          const otherDel = deptDeliverables.find(d => d.name === 'Other');
+          updated.deliverableType = otherDel?.id ?? '';
         } else if (row.projectId === LEAVE_PROJECT_ID) {
           updated.hours = 0;
           updated.minutes = 0;
@@ -127,7 +130,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
       return updated;
     }));
     setGlobalError(null);
-  }, []);
+  }, [deptDeliverables]);
 
   const addRow = useCallback(() => {
     setRows(prev => [...prev, createEmptyRow()]);
@@ -207,7 +210,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
           ? { workAreaId: row.phaseId, workAreaActivityTypeId: row.activityTypeId || undefined }
           : { phaseId: row.phaseId, activityTypeId: row.activityTypeId, supportDepartmentId: currentUser.departmentId }),
         taskDescription: row.taskDescription.trim(),
-        deliverableType: row.deliverableType as DeliverableType,
+        deliverableType: row.deliverableType,
         deliverableDescription: row.deliverableDescription.trim() || undefined,
         date: selectedDate,
         hours: row.hours,
@@ -278,6 +281,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
             canRemove={rows.length > 1}
             grouped={grouped}
             departmentName={departmentName}
+            deptDeliverables={deptDeliverables}
           />
         ))}
       </div>
@@ -293,9 +297,10 @@ interface GridRowEntryProps {
   canRemove: boolean;
   grouped: import('@/types').GroupedWorkstreams;
   departmentName: string;
+  deptDeliverables: DeliverableTypeItem[];
 }
 
-function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, departmentName }: GridRowEntryProps) {
+function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, departmentName, deptDeliverables }: GridRowEntryProps) {
   const { projects, getActivitiesForPhase, getPhasesForProject } = useReferenceData();
   const isLeave = row.projectId === LEAVE_PROJECT_ID;
   const selectedProject = useMemo(() => projects.find(p => p.id === row.projectId), [row.projectId, projects]);
@@ -397,16 +402,22 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div className="sm:col-span-2 lg:col-span-3 p-3 rounded-md border border-border/50 bg-muted/30 space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
-                <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
-                  <SelectValue placeholder="Deliverable *" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DELIVERABLE_TYPES.map(t => (
-                    <SelectItem key={t} value={t}>{getDeliverableLabel(t)}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {deptDeliverables.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic py-1">
+                  No deliverables configured. Contact Admin.
+                </p>
+              ) : (
+                <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
+                  <SelectTrigger className={row.errors.deliverableType ? 'border-destructive' : ''}>
+                    <SelectValue placeholder="Deliverable *" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deptDeliverables.map(d => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
               {row.errors.deliverableType && <p className="text-xs text-destructive mt-1">{row.errors.deliverableType}</p>}
             </div>
             <div>

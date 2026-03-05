@@ -25,7 +25,6 @@ import {
   formatDuration, 
   formatHours, 
   getBillableLabel, 
-  getDeliverableLabel,
   WEEKLY_EXPECTED_HOURS,
   HOURS_PER_DAY_TARGET,
   MAX_DAILY_HOURS,
@@ -33,6 +32,7 @@ import {
   BillableStatus,
   toTotalMinutes,
 } from '@/types';
+import { useReferenceData } from '@/contexts/ReferenceDataContext';
 import { cn, getProgressColor } from '@/lib/utils';
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -40,6 +40,7 @@ const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 export function WeeklyTimesheet() {
   const { currentUser } = useAuthenticatedUser();
   const { getDailyTotals, getWeekSummary, submitWeek, isWeekSubmitted, deleteEntry } = useTimeEntries();
+  const { deliverableTypes } = useReferenceData();
   
   const [weekStart, setWeekStart] = useState(getWeekStart());
   const [selectedDay, setSelectedDay] = useState(0);
@@ -406,7 +407,7 @@ export function WeeklyTimesheet() {
                       </p>
                       {entry.deliverableDescription && (
                         <p className="text-sm text-muted-foreground mt-1 italic">
-                          {getDeliverableLabel(entry.deliverableType)}: {entry.deliverableDescription}
+                          {deliverableTypes.find(d => d.id === entry.deliverableType)?.name ?? entry.deliverableType}: {entry.deliverableDescription}
                         </p>
                       )}
                       <div className="flex items-center gap-2 mt-2">
