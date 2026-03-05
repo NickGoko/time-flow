@@ -84,7 +84,7 @@ export interface TimeEntry {
   workAreaActivityTypeId?: string;
 
   taskDescription: string; // mandatory
-  deliverableType: DeliverableType;
+  deliverableType: string; // deliverable_types.id from DB
   deliverableDescription?: string; // optional
   date: string; // ISO date string (YYYY-MM-DD)
   hours: number; // 0-8
@@ -207,6 +207,9 @@ export interface DeliverableTypeItem {
   id: string;
   name: string;
   isActive: boolean;
+  departmentId?: string | null;
+  isGlobal: boolean;
+  sortOrder: number;
 }
 
 // Seed deliverable types from the static list
@@ -214,6 +217,8 @@ export const SEED_DELIVERABLE_TYPES: DeliverableTypeItem[] = DELIVERABLE_TYPES.m
   id: `del-${type}`,
   name: getDeliverableLabel(type),
   isActive: true,
+  isGlobal: false,
+  sortOrder: 0,
 }));
 
 export const WORKSTREAM_TYPES: WorkstreamType[] = ['external_project', 'internal_department'];

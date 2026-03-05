@@ -36,6 +36,7 @@ interface ReferenceDataContextType {
   getPhasesForProject: (projectId: string) => Phase[];
   getGroupedWorkstreams: (departmentId: string, userId: string, entries: TimeEntry[]) => GroupedWorkstreams;
   getProjectById: (id: string) => Project | undefined;
+  getDeliverablesForDepartment: (deptId: string) => DeliverableTypeItem[];
 
   toggleDepartmentActive: (id: string) => void;
   addDepartment: (name: string) => void;
@@ -109,7 +110,10 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
         })));
       }
       if (delRes.data?.length) {
-        setDeliverableTypes(delRes.data.map((d: any) => ({ id: d.id, name: d.name, isActive: d.is_active })));
+        setDeliverableTypes(delRes.data.map((d: any) => ({
+          id: d.id, name: d.name, isActive: d.is_active,
+          departmentId: d.department_id, isGlobal: d.is_global, sortOrder: d.sort_order,
+        })));
       }
     }
     fetchAll();
@@ -147,6 +151,15 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       return phases.filter(p => EXTERNAL_PHASE_IDS.has(p.id) && p.isActive);
     },
     [projects, phases, workAreas],
+  );
+
+  const getDeliverablesForDepartment = useCallback(
+    (deptId: string): DeliverableTypeItem[] => {
+      return deliverableTypes
+        .filter(d => d.isActive && (d.isGlobal || d.departmentId === deptId))
+        .sort((a, b) => a.sortOrder - b.sortOrder);
+    },
+    [deliverableTypes],
   );
 
   const getGroupedWorkstreams = useCallback(
@@ -383,7 +396,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
 
   const addDeliverableType = useCallback(async (name: string) => {
     const id = 'del-' + Date.now();
-    const newItem: DeliverableTypeItem = { id, name, isActive: true };
+    const newItem: DeliverableTypeItem = { id, name, isActive: true, isGlobal: false, sortOrder: 0 };
     setDeliverableTypes(prev => [...prev, newItem]);
     const { error } = await supabase.from('deliverable_types').insert({ id, name, is_active: true });
     if (error) {
@@ -415,7 +428,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
     () => ({
       departments, projects, projectDepartmentAccess: access, phases, activityTypes,
       internalWorkAreas: workAreas, deliverableTypes,
-      getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById,
+      getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, getDeliverablesForDepartment,
       toggleDepartmentActive, addDepartment, updateDepartment,
       addPhase, updatePhase, togglePhaseActive,
       addActivityType, updateActivityType, toggleActivityTypeActive,
@@ -424,7 +437,7 @@ export function ReferenceDataProvider({ children }: { children: ReactNode }) {
       addDeliverableType, updateDeliverableType, toggleDeliverableTypeActive,
     }),
     [departments, projects, access, phases, activityTypes, workAreas, deliverableTypes,
-     getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById,
+     getDepartmentById, getActivitiesForPhase, getPhasesForProject, getGroupedWorkstreams, getProjectById, getDeliverablesForDepartment,
      toggleDepartmentActive, addDepartment, updateDepartment,
      addPhase, updatePhase, togglePhaseActive,
      addActivityType, updateActivityType, toggleActivityTypeActive,

@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { useCurrentUser } from '@/contexts/UserContext';
+import { useReferenceData } from '@/contexts/ReferenceDataContext';
+import { toast } from 'sonner';
 import { 
   TimeEntry, 
   WeekStatus, 
@@ -68,8 +70,18 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
+  const { getDeliverablesForDepartment } = useReferenceData();
+
   const addEntry = useCallback((entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => {
     if (!currentUser) return;
+
+    // Validate deliverable belongs to user's department
+    const allowed = getDeliverablesForDepartment(currentUser.departmentId);
+    if (!allowed.some(d => d.id === entry.deliverableType)) {
+      toast.error('Deliverable type is not allowed for your department.');
+      return;
+    }
+
     const newEntry: TimeEntry = {
       ...entry,
       userId: currentUser.id,
@@ -78,10 +90,20 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
       updatedAt: new Date().toISOString(),
     };
     setEntries(prev => [...prev, newEntry]);
-  }, [currentUser]);
+  }, [currentUser, getDeliverablesForDepartment]);
 
   const updateEntry = useCallback((id: string, updates: Partial<TimeEntry>) => {
     const { userId: _strip, ...safeUpdates } = updates;
+
+    // Validate deliverable if being changed
+    if (safeUpdates.deliverableType && currentUser) {
+      const allowed = getDeliverablesForDepartment(currentUser.departmentId);
+      if (!allowed.some(d => d.id === safeUpdates.deliverableType)) {
+        toast.error('Deliverable type is not allowed for your department.');
+        return;
+      }
+    }
+
     setEntries(prev => {
       const existing = prev.find(e => e.id === id);
       if (existing && !assertOwnership(existing.userId, 'updateEntry')) return prev;
@@ -91,7 +113,7 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
           : entry
       );
     });
-  }, [currentUser]);
+  }, [currentUser, getDeliverablesForDepartment]);
 
   const deleteEntry = useCallback((id: string) => {
     setEntries(prev => {

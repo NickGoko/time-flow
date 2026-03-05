@@ -30,10 +30,7 @@ import {
 } from '@/components/ui/dialog';
 import { 
   BillableStatus, 
-  DeliverableType,
   getBillableLabel,
-  getDeliverableLabel,
-  DELIVERABLE_TYPES,
   BILLABLE_STATUSES,
   HOUR_OPTIONS,
   MINUTE_OPTIONS,
@@ -62,7 +59,7 @@ interface TimeEntryFormProps {
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useAuthenticatedUser();
   const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
-  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects } = useReferenceData();
+  const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects, getDeliverablesForDepartment } = useReferenceData();
   const entries = getOwnEntries();
   const [open, setOpen] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
@@ -84,8 +81,14 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const [phaseId, setPhaseId] = useState('');
   const [activityTypeId, setActivityTypeId] = useState('');
   const [taskDescription, setTaskDescription] = useState('');
-  const [deliverableType, setDeliverableType] = useState<DeliverableType | ''>('');
+  const [deliverableType, setDeliverableType] = useState('');
   const [deliverableDescription, setDeliverableDescription] = useState('');
+
+  // Department-scoped deliverables
+  const deptDeliverables = useMemo(
+    () => getDeliverablesForDepartment(currentUser.departmentId),
+    [currentUser.departmentId, getDeliverablesForDepartment],
+  );
   const [hours, setHours] = useState<number>(0);
   const [minutes, setMinutes] = useState<number>(0);
   const [billableStatus, setBillableStatus] = useState<BillableStatus>(
@@ -127,7 +130,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
       setHours(8);
       setMinutes(0);
       setBillableStatus('not_billable');
-      setDeliverableType('other');
+      // Find dept-specific "Other" deliverable
+      const otherDel = deptDeliverables.find(d => d.name === 'Other');
+      setDeliverableType(otherDel?.id ?? '');
     } else if (projectId === LEAVE_PROJECT_ID) {
       setHours(0);
       setMinutes(0);
@@ -188,7 +193,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
         ? { workAreaId: phaseId, workAreaActivityTypeId: activityTypeId || undefined }
         : { phaseId, activityTypeId, supportDepartmentId: currentUser.departmentId }),
       taskDescription: taskDescription.trim(),
-      deliverableType: deliverableType as DeliverableType,
+      deliverableType,
       deliverableDescription: deliverableDescription.trim() || undefined,
       date: format(date, 'yyyy-MM-dd'),
       hours,
@@ -348,22 +353,28 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
             {/* Deliverable Type */}
             <div className="grid gap-2">
               <Label htmlFor="deliverableType">Deliverable type *</Label>
-              <Select 
-                value={deliverableType} 
-                onValueChange={(value) => setDeliverableType(value as DeliverableType)}
-                disabled={isLeaveProject}
-              >
-                <SelectTrigger id="deliverableType">
-                  <SelectValue placeholder="Select deliverable type" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DELIVERABLE_TYPES.map(type => (
-                    <SelectItem key={type} value={type}>
-                      {getDeliverableLabel(type)}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              {deptDeliverables.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic py-2">
+                  No deliverables configured for your department. Contact Admin.
+                </p>
+              ) : (
+                <Select 
+                  value={deliverableType} 
+                  onValueChange={setDeliverableType}
+                  disabled={isLeaveProject}
+                >
+                  <SelectTrigger id="deliverableType">
+                    <SelectValue placeholder="Select deliverable type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {deptDeliverables.map(d => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             </div>
 
             {/* Deliverable Description */}
