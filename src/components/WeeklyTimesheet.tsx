@@ -265,9 +265,15 @@ export function WeeklyTimesheet() {
               </span>
             </div>
             <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-warning" />
+              <span className="text-sm text-muted-foreground">
+                Maybe billable: {formatHours(weekSummary.maybeBillableMinutes)}h
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
               <div className="w-2 h-2 rounded-full bg-not-billable" />
               <span className="text-sm text-muted-foreground">
-                Non-billable: {formatHours(weekSummary.notBillableMinutes)}h
+                Not billable: {formatHours(weekSummary.notBillableMinutes)}h
               </span>
             </div>
           </div>

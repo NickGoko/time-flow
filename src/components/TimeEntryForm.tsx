@@ -271,10 +271,10 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
 
             {/* Workstream (grouped) */}
             <div className="grid gap-2">
-              <Label htmlFor="project">Workstream *</Label>
+              <Label htmlFor="project">Category *</Label>
               <Select value={projectId} onValueChange={handleProjectChange}>
                 <SelectTrigger id="project">
-                  <SelectValue placeholder="Select workstream" />
+                  <SelectValue placeholder="Select category" />
                 </SelectTrigger>
                 <SelectContent>
                   {(grouped.external.length > 0 || grouped.leave.length > 0) && (
@@ -302,10 +302,10 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
 
             {/* Phase / Work area */}
             <div className="grid gap-2">
-              <Label htmlFor="phase">{phaseLabel} *</Label>
+              <Label htmlFor="phase">Project *</Label>
               <Select value={phaseId} onValueChange={handlePhaseChange} disabled={isLeaveProject}>
                 <SelectTrigger id="phase">
-                  <SelectValue placeholder={`Select ${phaseLabel.toLowerCase()}`} />
+                  <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
                   {(isLeaveProject ? getPhasesForProject(LEAVE_PROJECT_ID) : projectId ? getPhasesForProject(projectId) : []).map(phase => (
@@ -319,14 +319,14 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
 
             {/* Activity Type */}
             <div className="grid gap-2">
-              <Label htmlFor="activityType">Activity type *</Label>
+              <Label htmlFor="activityType">Activity/task *</Label>
               <Select 
                 value={activityTypeId} 
                 onValueChange={setActivityTypeId}
                 disabled={!phaseId}
               >
                 <SelectTrigger id="activityType">
-                  <SelectValue placeholder={phaseId ? "Select activity" : `Select ${phaseLabel.toLowerCase()} first`} />
+                  <SelectValue placeholder={phaseId ? "Select activity/task" : "Select project first"} />
                 </SelectTrigger>
                 <SelectContent>
                   {availableActivities.map(activity => (
@@ -379,9 +379,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
 
             {/* Deliverable Description */}
             <div className="grid gap-2">
-              <Label htmlFor="deliverableDescription">
-                Deliverable description <span className="text-muted-foreground">(optional)</span>
-              </Label>
+              <Label htmlFor="deliverableDescription">Deliverable description</Label>
               <Textarea
                 id="deliverableDescription"
                 placeholder="Describe the deliverable"

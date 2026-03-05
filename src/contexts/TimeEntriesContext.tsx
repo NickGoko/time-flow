@@ -154,6 +154,9 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
       const billableMinutes = weekEntries
         .filter(e => e.billableStatus === 'billable')
         .reduce((sum, e) => sum + getTotalMinutes(e), 0);
+      const maybeBillableMinutes = weekEntries
+        .filter(e => e.billableStatus === 'maybe_billable')
+        .reduce((sum, e) => sum + getTotalMinutes(e), 0);
       const notBillableMinutes = weekEntries
         .filter(e => e.billableStatus === 'not_billable')
         .reduce((sum, e) => sum + getTotalMinutes(e), 0);
@@ -166,6 +169,7 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         weekStartDate: weekStart,
         totalMinutes,
         billableMinutes,
+        maybeBillableMinutes,
         notBillableMinutes,
         entriesByDay,
         status,
