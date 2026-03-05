@@ -58,7 +58,7 @@ interface TimeEntryFormProps {
 
 export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const { currentUser } = useAuthenticatedUser();
-  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries } = useTimeEntries();
+  const { addEntry, getDailyTotalMinutes, getDailyNonTravelMinutes, getOwnEntries, logCapBlock } = useTimeEntries();
   const { getGroupedWorkstreams, getDepartmentById, getActivitiesForPhase, getPhasesForProject, projects, getDeliverablesForDepartment } = useReferenceData();
   const entries = getOwnEntries();
   const [open, setOpen] = useState(false);
@@ -179,6 +179,7 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
     e.preventDefault();
     
     if (wouldExceedCap) {
+      logCapBlock(currentUser.id, format(date, 'yyyy-MM-dd'));
       setValidationError(`Daily non-travel total can't exceed ${MAX_DAILY_HOURS}h. You have ${formatHours(remainingMinutes)}h remaining. Only Travel entries may exceed this limit.`);
       return;
     }

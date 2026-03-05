@@ -11,7 +11,7 @@ import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { deriveMetrics, deriveOperationalInsights } from '@/data/reportsMockData';
-import { getWeekStart } from '@/data/seed';
+import { getWeekStart, parseLocalDate } from '@/data/seed';
 import { departments } from '@/data/seed';
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
@@ -20,7 +20,7 @@ type RangeOption = 'this_week' | 'last_week' | 'this_month';
 type ScopeOption = 'my' | 'department' | 'org';
 
 export default function AdminReportsOverview() {
-  const { getAllEntries, weekStatuses } = useTimeEntries();
+  const { getAllEntries, weekStatuses, validationEvents } = useTimeEntries();
   const entries = getAllEntries();
   const { currentUser, allUsers, appRole } = useAuthenticatedUser();
   const [range, setRange] = useState<RangeOption>('this_week');
@@ -65,17 +65,28 @@ export default function AdminReportsOverview() {
     return weekStatuses.filter(ws => scopedUserIds.has(ws.userId));
   }, [weekStatuses, scopedUsers]);
 
-  const { weekStart, days } = useMemo(() => {
+  const { weekStart, days, rangeStartDate, rangeEndDate } = useMemo(() => {
     const now = new Date();
-    if (range === 'this_week') return { weekStart: getWeekStart(now), days: 7 };
+    if (range === 'this_week') {
+      const ws = getWeekStart(now);
+      const start = parseLocalDate(ws);
+      const end = new Date(start); end.setDate(end.getDate() + 6);
+      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
+    }
     if (range === 'last_week') {
-      const d = new Date(now);
-      d.setDate(d.getDate() - 7);
-      return { weekStart: getWeekStart(d), days: 7 };
+      const d = new Date(now); d.setDate(d.getDate() - 7);
+      const ws = getWeekStart(d);
+      const start = parseLocalDate(ws);
+      const end = new Date(start); end.setDate(end.getDate() + 6);
+      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
     }
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const dayCount = now.getDate();
-    return { weekStart: getWeekStart(first), days: Math.min(dayCount + (first.getDay() === 0 ? 6 : first.getDay() - 1), 35) };
+    const ws = getWeekStart(first);
+    const start = parseLocalDate(ws);
+    const totalDays = Math.min(dayCount + (first.getDay() === 0 ? 6 : first.getDay() - 1), 35);
+    const end = new Date(start); end.setDate(end.getDate() + totalDays - 1);
+    return { weekStart: ws, days: totalDays, rangeStartDate: start, rangeEndDate: end };
   }, [range]);
 
   const metrics = useMemo(() => deriveMetrics(scopedEntries, weekStart, days), [scopedEntries, weekStart, days]);
@@ -83,6 +94,16 @@ export default function AdminReportsOverview() {
     () => deriveOperationalInsights(scopedEntries, weekStart, days, scopedUsers, scopedWeekStatuses),
     [scopedEntries, weekStart, days, scopedUsers, scopedWeekStatuses],
   );
+
+  const blockedByCapCount = useMemo(() => {
+    const scopedUserIds = new Set(scopedUsers.map(u => u.id));
+    return validationEvents.filter(ve => {
+      if (ve.eventType !== 'cap_blocked') return false;
+      if (!scopedUserIds.has(ve.userId)) return false;
+      const d = parseLocalDate(ve.entryDate);
+      return d >= rangeStartDate && d <= rangeEndDate;
+    }).length;
+  }, [validationEvents, scopedUsers, rangeStartDate, rangeEndDate]);
 
   return (
     <div className="min-h-screen bg-background">
@@ -182,8 +203,9 @@ export default function AdminReportsOverview() {
               <ShieldAlert className="h-5 w-5 text-muted-foreground mt-0.5 shrink-0" />
               <div>
                 <p className="text-xs text-muted-foreground">Blocked by cap</p>
-                <p className="text-lg font-semibold">{insights.blockedByCap}</p>
-                <Badge variant="secondary" className="text-[10px] mt-1">Preview</Badge>
+                <p className="text-lg font-semibold">
+                  {blockedByCapCount} {blockedByCapCount === 1 ? 'attempt' : 'attempts'}
+                </p>
               </div>
             </Card>
           </div>

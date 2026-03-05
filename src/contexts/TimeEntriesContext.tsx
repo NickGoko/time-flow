@@ -37,10 +37,20 @@ export interface DayHistoryRow {
   isSubmitted: boolean | null;
 }
 
+export interface ValidationEvent {
+  id: string;
+  eventType: string;
+  userId: string;
+  entryDate: string;
+  createdAt: string;
+}
+
 interface TimeEntriesContextType {
   getOwnEntries: () => TimeEntry[];
   getAllEntries: () => TimeEntry[];
   weekStatuses: WeekStatus[];
+  validationEvents: ValidationEvent[];
+  logCapBlock: (userId: string, entryDate: string) => void;
   addEntry: (entry: Omit<TimeEntry, 'id' | 'createdAt' | 'updatedAt' | 'userId'>) => void;
   updateEntry: (id: string, updates: Partial<TimeEntry>) => void;
   deleteEntry: (id: string) => void;
@@ -61,6 +71,17 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
   const { currentUser } = useCurrentUser();
   const [entries, setEntries] = useState<TimeEntry[]>(seedTimeEntries);
   const [weekStatuses, setWeekStatuses] = useState<WeekStatus[]>(seedWeekStatuses);
+  const [validationEvents, setValidationEvents] = useState<ValidationEvent[]>([]);
+
+  const logCapBlock = useCallback((userId: string, entryDate: string) => {
+    setValidationEvents(prev => [...prev, {
+      id: `ve-${Date.now()}`,
+      eventType: 'cap_blocked',
+      userId,
+      entryDate,
+      createdAt: new Date().toISOString(),
+    }]);
+  }, []);
 
   const assertOwnership = (userId: string, action: string) => {
     if (currentUser && userId !== currentUser.id) {
@@ -351,6 +372,8 @@ export function TimeEntriesProvider({ children }: { children: ReactNode }) {
         getOwnEntries,
         getAllEntries,
         weekStatuses,
+        validationEvents,
+        logCapBlock,
         addEntry,
         updateEntry,
         deleteEntry,
