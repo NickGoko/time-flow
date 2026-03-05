@@ -14,6 +14,7 @@ import { Card } from '@/components/ui/card';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { deriveDailyBreakdown, deriveProjectBreakdown, deriveDailyProjectBreakdown } from '@/data/reportsMockData';
 import { getWeekStart, getWeekDate, projects } from '@/data/seed';
+import { TimeEntry } from '@/types';
 
 type RangeOption = 'this_week' | 'last_week' | 'this_month';
 type BreakdownMode = 'billable_status' | 'top_projects';
@@ -35,11 +36,12 @@ const PROJECT_COLOURS = [
 
 interface Props {
   range: RangeOption;
+  entries?: TimeEntry[];
 }
 
-export function WeeklyChart({ range }: Props) {
+export function WeeklyChart({ range, entries: entriesProp }: Props) {
   const { getAllEntries } = useTimeEntries();
-  const entries = getAllEntries();
+  const entries = entriesProp ?? getAllEntries();
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('billable_status');
   const [projectFilter, setProjectFilter] = useState<string>('all');
 

@@ -4,13 +4,21 @@ import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { getWeekStart } from '@/data/seed';
 import { useMemo } from 'react';
+import { TimeEntry, User } from '@/types';
 
 const MIN_USERS_FOR_COHORT = 5;
 
-export function CohortWidget() {
+interface Props {
+  entries?: TimeEntry[];
+  users?: User[];
+}
+
+export function CohortWidget({ entries: entriesProp, users: usersProp }: Props) {
   const { getAllEntries } = useTimeEntries();
-  const entries = getAllEntries();
-  const { allUsers } = useAuthenticatedUser();
+  const { allUsers: contextUsers } = useAuthenticatedUser();
+
+  const entries = entriesProp ?? getAllEntries();
+  const allUsers = usersProp ?? contextUsers;
   const weekStart = useMemo(() => getWeekStart(), []);
 
   const summaries = useMemo(
