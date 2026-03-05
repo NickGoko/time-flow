@@ -508,7 +508,50 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      time_entries_enriched: {
+        Row: {
+          activity_name: string | null
+          billable_status: string | null
+          category: string | null
+          comments: string | null
+          created_at: string | null
+          deliverable_description: string | null
+          deliverable_type_name: string | null
+          department_name: string | null
+          duration_minutes: number | null
+          entry_date: string | null
+          entry_id: string | null
+          is_submitted: boolean | null
+          phase_name: string | null
+          project_id: string | null
+          project_name: string | null
+          task_description: string | null
+          updated_at: string | null
+          user_department_id: string | null
+          user_email: string | null
+          user_id: string | null
+          user_name: string | null
+          week_start_date: string | null
+          work_area_activity_name: string | null
+          work_area_name: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "profiles_department_id_fkey"
+            columns: ["user_department_id"]
+            isOneToOne: false
+            referencedRelation: "departments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_permission: {
