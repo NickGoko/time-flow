@@ -3,7 +3,7 @@ import { User, AppRole } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Session } from '@supabase/supabase-js';
-import { AUTH_ENABLED, DEV_MODE } from '@/lib/devMode';
+import { AUTH_ENABLED, DEV_MODE, DEMO_MODE } from '@/lib/devMode';
 
 interface UserContextType {
   currentUser: User | null;
@@ -112,13 +112,6 @@ export function UserProvider({ children }: { children: ReactNode }) {
     return users;
   }, []);
 
-  // ── Auth-disabled / demo mode bootstrap ──────────────────────
-  useEffect(() => {
-    if (AUTH_ENABLED) return;
-    demoBootstrap();
-  }, [demoBootstrap]);
-
-  // ── Auth-enabled bootstrap ───────────────────────────────────
   const demoBootstrap = useCallback(async () => {
     const users = await refreshAllUsers();
     if (!users || users.length === 0) {
@@ -131,6 +124,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     setNotProvisioned(false);
     setIsLoading(false);
   }, [refreshAllUsers]);
+
+  // ── Auth-disabled / demo mode bootstrap ──────────────────────
+  useEffect(() => {
+    if (AUTH_ENABLED) return;
+    demoBootstrap();
+  }, [demoBootstrap]);
 
   const handleSession = useCallback(async (session: Session | null) => {
     if (!session?.user) {
