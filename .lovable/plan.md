@@ -1,110 +1,77 @@
 
 
-# Plan: Drift Detector — Reconciliation Check for Reports Overview + Personal Dashboard
+# Plan: Personal Dashboard — Category/Project Filters, Breakdown Tables, and Trend View Toggle
 
-## Summary
+## Current State
 
-Create a shared `reconcileDashboardTotals` helper that validates billing mix consistency and entry-level totals. Wire it into both pages on every filter change. Surface mismatches in DEV_MODE via console warnings, and add a "Reconciliation mismatch" line to the existing Data Quality card on Reports Overview.
+**Single file**: `src/pages/EmployeeInsights.tsx` renders the entire page. It already has:
+- Time range chips (Today through This year) using `getDateWindow()` from `useDashboardDataset.ts`
+- Summary card with tri-state billing totals
+- Top Projects table (top 5 + Other, columns: Project | Hours | %)
+- Top Activities table (top 8, columns: Activity | Hours | %)
+- 6-Week Trend chart (single bar, toggle between Hours and Billable %)
+- Recent History table
 
-## Files to change (4)
+**Data**: `getOwnEntries()` returns all user entries. Filtered by date range into `rangeEntries`. Projects available in `projects` array from `seed.ts` with `type: 'external_project' | 'internal_department'`.
 
-| # | File | Change |
-|---|---|---|
-| 1 | `src/lib/reconcile.ts` | **New.** Shared reconciliation helper |
-| 2 | `src/pages/AdminReportsOverview.tsx` | Run reconciliation on filter change, surface mismatch in Data Quality card |
-| 3 | `src/pages/EmployeeInsights.tsx` | Run reconciliation on range change (replace existing `console.assert`) |
-| 4 | `src/lib/devMode.ts` | No change needed — already exports `DEV_MODE` |
+**Admin Reports stacked bar logic**: `WeeklyChart.tsx` uses `deriveDailyBreakdown()` from `reportsMockData.ts` for billable/maybe/not stacked bars. This returns per-day breakdown from entries.
 
-## Detailed changes
+## Changes — 2 files
 
-### `src/lib/reconcile.ts` — New shared helper
+### File 1: `src/pages/EmployeeInsights.tsx`
 
+**A) Add Category + Project filter state (lines 52-53 area)**
 ```typescript
-import { DEV_MODE } from './devMode';
-
-interface ReconcileInput {
-  entries: { billableStatus: string; hours: number; minutes: number }[];
-  kpiTotalMinutes: number;
-  kpiBillable: number;
-  kpiMaybe: number;
-  kpiNotBillable: number;
-  teamRowsTotalMinutes?: number; // sum of team table Hours column
-  label: string; // e.g. "Reports/Org/this_week"
-}
-
-interface ReconcileResult {
-  hasMismatch: boolean;
-  details: string[];
-}
-
-export function reconcileDashboardTotals(input: ReconcileInput): ReconcileResult {
-  const TOLERANCE = 1; // 1 minute
-  const details: string[] = [];
-
-  // Check 1: Billable + Maybe + Not billable == Total
-  const billingSum = input.kpiBillable + input.kpiMaybe + input.kpiNotBillable;
-  if (Math.abs(billingSum - input.kpiTotalMinutes) > TOLERANCE) {
-    details.push(`Billing mix: ${input.kpiBillable}+${input.kpiMaybe}+${input.kpiNotBillable}=${billingSum} vs total=${input.kpiTotalMinutes}`);
-  }
-
-  // Check 2: KPI total matches sum of entry minutes
-  const entrySum = input.entries.reduce((s, e) => s + (e.hours * 60 + e.minutes), 0);
-  if (Math.abs(entrySum - input.kpiTotalMinutes) > TOLERANCE) {
-    details.push(`Entry sum: ${entrySum} vs KPI total: ${input.kpiTotalMinutes}`);
-  }
-
-  // Check 3: Team table sum matches total (if provided)
-  if (input.teamRowsTotalMinutes !== undefined) {
-    if (Math.abs(input.teamRowsTotalMinutes - input.kpiTotalMinutes) > TOLERANCE) {
-      details.push(`Team table sum: ${input.teamRowsTotalMinutes} vs KPI total: ${input.kpiTotalMinutes}`);
-    }
-  }
-
-  if (details.length > 0 && DEV_MODE) {
-    console.warn(`[Reconcile/${input.label}] Mismatch detected:`, details);
-  }
-
-  return { hasMismatch: details.length > 0, details };
-}
+type CategoryFilter = 'all' | 'external' | 'internal';
+const [category, setCategory] = useState<CategoryFilter>('all');
+const [projectFilter, setProjectFilter] = useState<string>('all');
+const [trendView, setTrendView] = useState<'hours' | 'billing_mix'>('hours');
 ```
 
-### `src/pages/AdminReportsOverview.tsx`
+**B) Add filter controls below range chips (after line 168)**
+- Category: 3 chips (All / External / Internal) matching existing button style
+- Project dropdown: `<Select>` showing projects filtered by category. External projects + Leave when "External", internal projects for user's department when "Internal", both when "All". Default "All projects".
+- Reset `projectFilter` to `'all'` when `category` changes
 
-- Import `reconcileDashboardTotals` from `@/lib/reconcile`
-- Add a `useMemo` that runs reconciliation using `metrics` (from hook), `scopedEntries`, and team summary totals
-- In the Data Quality card (lines 116-128), add a conditional line below the existing backdated entries content:
-  ```
-  {reconcileResult.hasMismatch && (
-    <p className="text-xs text-destructive mt-1">Reconciliation mismatch</p>
-  )}
-  ```
-- Include QA matrix as a code comment block at the bottom of the file
+**C) Filter `rangeEntries` by category + project (modify lines 58-62)**
+Apply category filter: check `getProjectById(e.projectId)?.type` against category. Apply project filter if not `'all'`.
 
-### `src/pages/EmployeeInsights.tsx`
+All downstream consumers (`summary`, `topProjects`, `topActivities`) already derive from `rangeEntries` — no further wiring needed.
 
-- Import `reconcileDashboardTotals`
-- Replace the existing `console.assert` (line 74-77) with a call to `reconcileDashboardTotals` passing `rangeEntries`, `summary.*` values, and label `Personal/${range}`
-- No UI flag needed here (no Data Quality card on personal dashboard)
+**D) Enhance Top Projects table (lines 211-238)**
+Add "Billable %" column: compute per-project billable minutes / project total minutes. Make rows clickable — `onClick` sets `setProjectFilter(p.id)`.
 
-### QA test matrix (included as code comment)
+**E) Replace trend chart with filter-aware stacked option (lines 271-303)**
+- Replace the toggle button text: "Hours | Billing mix"
+- `trendView === 'hours'`: current single bar behavior BUT filtered by category + project
+- `trendView === 'billing_mix'`: stacked bars (billable/maybe/not) per week, reusing the same color scheme as `WeeklyChart.tsx` (`STATUS_CHART_CONFIG`)
 
+For this, change `getWeeklyTotals()` to compute from `ownEntries` filtered by category + project, or compute trend data in a `useMemo` directly from filtered entries grouped by week.
+
+**F) Compute trend from filtered entries instead of `getWeeklyTotals()`**
+Build a `useMemo` that groups filtered `ownEntries` (by category + project, across last 6 weeks) into weekly buckets with `totalMinutes`, `billableMinutes`, `maybeMinutes`, `notBillableMinutes`. This replaces the `getWeeklyTotals(currentUser.id, 6)` call.
+
+### File 2: `src/hooks/useDashboardDataset.ts`
+
+No changes needed — `getDateWindow` and `getExpectedMinutes` already exported.
+
+## Layout
+
+```text
+[Header]
+[Range chips: Today | This week | ... ]
+[Category: All | External | Internal]  [Project: dropdown]
+[Summary card]
+[Top Projects (5+Other)] [Top Activities (8)]
+[6-Week Trend — toggle: Hours | Billing mix]
+[Recent History]
 ```
-// ── QA Reconciliation Test Matrix ────────────────────────────────
-// SMOKE TEST (highest value combos — test these first):
-//  1. Org + This week + By status
-//  2. Org + This month + By project
-//  3. Department + This week + By department
-//  4. My dashboard + Today + By status
-//  5. Org + This quarter + By status
-//
-// FULL MATRIX:
-//  Scopes: My dashboard, Department, Organisation
-//  Ranges: Today, This week, Last week, This month, This quarter, This year
-//  Breakdowns: By status, By project, By department
-//  Total combos: 3 × 6 × 3 = 54
-//
-// Personal Dashboard:
-//  Ranges: Today, This week, Last week, This month, This quarter, This year
-//  Total combos: 6
-```
+
+## QA
+1. Default state (This week / All / All projects) matches current behavior exactly
+2. Selecting "External" hides internal projects from dropdown and tables
+3. Clicking a project row in Top Projects sets the project filter
+4. Trend chart reflects category + project filters
+5. Billing mix stacked bars show correct proportions
+6. Totals reconcile across summary card and tables for every filter combo
 
