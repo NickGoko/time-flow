@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -11,6 +11,7 @@ import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
 import { useDashboardDataset, RangeOption, ScopeOption } from '@/hooks/useDashboardDataset';
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
+import { reconcileDashboardTotals } from '@/lib/reconcile';
 
 export default function AdminReportsOverview() {
   const [range, setRange] = useState<RangeOption>('this_week');
@@ -26,6 +27,15 @@ export default function AdminReportsOverview() {
     metrics, insights, blockedByCapCount,
     availableDepartments, canViewDepartment, canViewOrg,
   } = useDashboardDataset(scope, selectedDeptId, range);
+
+  const reconcileResult = useMemo(() => reconcileDashboardTotals({
+    entries: scopedEntries,
+    kpiTotalMinutes: metrics.totalMinutes,
+    kpiBillable: metrics.billableMinutes,
+    kpiMaybe: metrics.maybeBillableMinutes,
+    kpiNotBillable: metrics.notBillableMinutes,
+    label: `Reports/${scope}/${range}`,
+  }), [scopedEntries, metrics, scope, range]);
 
   // Set default dept if not yet set
   if (!selectedDeptId && availableDepartments.length > 0) {
@@ -123,6 +133,9 @@ export default function AdminReportsOverview() {
                   </p>
                 ) : (
                   <p className="text-lg font-semibold">No flags</p>
+                )}
+                {reconcileResult.hasMismatch && (
+                  <p className="text-xs text-destructive mt-1">Reconciliation mismatch</p>
                 )}
               </div>
             </Card>

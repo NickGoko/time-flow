@@ -18,6 +18,7 @@ import {
 } from '@/types';
 import { cn, getProgressColor } from '@/lib/utils';
 import { type RangeOption, getDateWindow, getExpectedMinutes } from '@/hooks/useDashboardDataset';
+import { reconcileDashboardTotals } from '@/lib/reconcile';
 
 const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -70,11 +71,15 @@ const EmployeeInsights = () => {
       else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
       else notBillableMinutes += mins;
     }
-    // Dev reconciliation check
-    console.assert(
-      billableMinutes + maybeMinutes + notBillableMinutes === totalMinutes,
-      `Billing mix mismatch: ${billableMinutes}+${maybeMinutes}+${notBillableMinutes} !== ${totalMinutes}`
-    );
+    // Dev reconciliation via shared helper (runs in useMemo, logs in DEV_MODE)
+    reconcileDashboardTotals({
+      entries: rangeEntries,
+      kpiTotalMinutes: totalMinutes,
+      kpiBillable: billableMinutes,
+      kpiMaybe: maybeMinutes,
+      kpiNotBillable: notBillableMinutes,
+      label: `Personal/${range}`,
+    });
     return { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes };
   }, [rangeEntries]);
 
