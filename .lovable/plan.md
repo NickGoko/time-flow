@@ -1,70 +1,93 @@
 
 
-# Plan: QA Drift Fixes for Personal Dashboard
+# Correctness Audit + Shared `getDashboardData` Module
 
-## Issues Found
+## Part 1: Current Architecture Map
 
-### 1. Reconciliation is a tautology (no real check)
-Lines 121-128: `summary` useMemo computes `totalMinutes` from `rangeEntries`, then passes both `rangeEntries` and `totalMinutes` to `reconcileDashboardTotals`. Since the totals are derived from the same entries in the same loop, this can never detect drift. It's checking a value against itself.
+### Files where KPIs/charts/tables are calculated
 
-**Fix**: Add a second reconciliation pass that cross-checks **topProjects sum** against `summary.totalMinutes`. This catches bugs where the project aggregation diverges from the billing aggregation.
+| File | What it computes | Data source |
+|---|---|---|
+| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
+| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
+| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
+| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
+| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
+| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
+| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
+| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
+| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
+| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
 
-### 2. Top Projects "Other" billable % uses double-rounding
-Line 159: `Math.round(p.minutes * p.billablePct / 100)` — `billablePct` is already rounded, so this loses precision. Should track raw billable minutes through the "Other" aggregation.
+### Supabase queries executed
 
-**Fix**: Track `billableMinutes` as a raw number in the sorted array, compute "Other" billable from raw values.
+Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
 
-### 3. No "Other" row in Top Activities table
-Top Activities shows top 8 only. The % column won't sum to 100%, which is confusing.
+The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
 
-**Fix**: Add an "Other" row when there are more than 8 activities, matching the Top Projects pattern.
+### Where billable/maybe/not billable totals are computed — drift sources
 
-## Files to change (1)
+**EmployeeInsights.tsx** computes totals **3 independent times**:
 
-`src/pages/EmployeeInsights.tsx` — all fixes are in this file.
+1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
+2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
+3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
 
-### Change A: Fix topProjects "Other" billable precision (lines 138-162)
+**AdminReportsOverview.tsx** has **2 independent computation paths**:
 
-Track raw `billableMinutes` instead of re-deriving from rounded `billablePct`:
-```typescript
-const sorted = Object.entries(map)
-  .map(([id, data]) => ({
-    id,
-    name: getProjectById(id)?.name ?? id,
-    minutes: data.minutes,
-    billableMinutes: data.billableMinutes,
-    billablePct: data.minutes > 0 ? Math.round((data.billableMinutes / data.minutes) * 100) : 0,
-  }))
-  .sort((a, b) => b.minutes - a.minutes);
-// "Other" row uses raw billableMinutes sum
-const otherBillMins = rest.reduce((s, p) => s + p.billableMinutes, 0);
+1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
+2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
+3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
+
+**Identified drift sources:**
+- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
+- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
+- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
+- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
+
+## Part 2: Recommended Shared Module
+
+### Approach: `useDashboardData(params)` hook
+
+Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
+
+```text
+src/hooks/useDashboardData.ts  (NEW — ~80 lines)
+
+Input:
+  entries: TimeEntry[]           // already scoped/filtered by caller
+  range: RangeOption
+  users?: User[]                 // for team/dept breakdowns
+  weekStatuses?: WeekStatus[]    // for submission status
+
+Output:
+  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
+  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
+  topActivities: { label, minutes }[]
+  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
+  teamSummary: TeamMemberSummary[]  (if users provided)
+  reconcileResult: ReconcileResult
 ```
 
-### Change B: Add "Other" row to Top Activities (lines 164-175)
+### Key design decisions:
+- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
+- **One pass** for totals + project + activity aggregation (single loop over entries).
+- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
+- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
 
-After slicing top 8, compute remaining minutes and add an "Other" row if > 0.
+### Files to change:
+1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
+2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
+3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
 
-### Change C: Add cross-widget reconciliation (after summary useMemo)
+### What NOT to change:
+- `useDashboardDataset.ts` — keep as-is for scope/user filtering
+- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
+- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
+- No new routes or pages
 
-Add a second `useMemo` that checks:
-- `topProjects` minutes sum === `summary.totalMinutes`
-- `topActivities` minutes sum (including Other) === `summary.totalMinutes`
-
-```typescript
-const widgetReconcile = useMemo(() => {
-  const projSum = topProjects.reduce((s, p) => s + p.minutes, 0);
-  const actSum = topActivities.reduce((s, a) => s + a.minutes, 0);
-  return reconcileDashboardTotals({
-    entries: rangeEntries,
-    kpiTotalMinutes: summary.totalMinutes,
-    kpiBillable: summary.billableMinutes,
-    kpiMaybe: summary.maybeMinutes,
-    kpiNotBillable: summary.notBillableMinutes,
-    teamRowsTotalMinutes: projSum, // cross-check projects table
-    label: `Personal/${range}/${category}/${projectFilter}/widgets`,
-  });
-}, [topProjects, topActivities, rangeEntries, summary, range, category, projectFilter]);
-```
-
-Remove the reconciliation call from inside the `summary` useMemo (it's a tautology there).
+### Implementation order:
+1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
+2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
+3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
 
