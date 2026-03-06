@@ -210,7 +210,7 @@ export default function AdminReportsOverview() {
             </Card>
           </div>
 
-          <WeeklyChart range={range} entries={scopedEntries} />
+          <WeeklyChart range={range} entries={scopedEntries} users={scopedUsers} />
 
           {scope !== 'my' && (
             <TeamSummaryTable

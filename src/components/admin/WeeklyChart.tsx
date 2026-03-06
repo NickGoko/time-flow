@@ -13,8 +13,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { deriveDailyBreakdown, deriveProjectBreakdown, deriveDailyProjectBreakdown } from '@/data/reportsMockData';
-import { getWeekStart, getWeekDate, projects } from '@/data/seed';
-import { TimeEntry } from '@/types';
+import { getWeekStart, getWeekDate, projects, departments } from '@/data/seed';
+import { TimeEntry, User } from '@/types';
 
 type RangeOption = 'this_week' | 'last_week' | 'this_month';
 type BreakdownMode = 'billable_status' | 'top_projects';
@@ -37,13 +37,24 @@ const PROJECT_COLOURS = [
 interface Props {
   range: RangeOption;
   entries?: TimeEntry[];
+  users?: User[];
 }
 
-export function WeeklyChart({ range, entries: entriesProp }: Props) {
+export function WeeklyChart({ range, entries: entriesProp, users: usersProp }: Props) {
   const { getAllEntries } = useTimeEntries();
   const entries = entriesProp ?? getAllEntries();
   const [breakdownMode, setBreakdownMode] = useState<BreakdownMode>('billable_status');
   const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [departmentFilter, setDepartmentFilter] = useState<string>('all');
+
+  // Filter entries by department when a department filter is active
+  const filteredEntries = useMemo(() => {
+    if (departmentFilter === 'all' || !usersProp) return entries;
+    const deptUserIds = new Set(usersProp.filter(u => u.departmentId === departmentFilter).map(u => u.id));
+    return entries.filter(e => deptUserIds.has(e.userId));
+  }, [entries, departmentFilter, usersProp]);
+
+  const activeDepartments = departments.filter(d => d.isActive);
 
   const { weekStart, days } = useMemo(() => {
     const now = new Date();
@@ -60,19 +71,19 @@ export function WeeklyChart({ range, entries: entriesProp }: Props) {
 
   // Status breakdown data
   const statusData = useMemo(
-    () => deriveDailyBreakdown(entries, weekStart, days, projectFilter === 'all' ? undefined : projectFilter),
-    [entries, weekStart, days, projectFilter],
+    () => deriveDailyBreakdown(filteredEntries, weekStart, days, projectFilter === 'all' ? undefined : projectFilter),
+    [filteredEntries, weekStart, days, projectFilter],
   );
 
   // Project breakdown data
   const projectItems = useMemo(
-    () => deriveProjectBreakdown(entries, weekStart, days),
-    [entries, weekStart, days],
+    () => deriveProjectBreakdown(filteredEntries, weekStart, days),
+    [filteredEntries, weekStart, days],
   );
 
   const projectData = useMemo(
-    () => deriveDailyProjectBreakdown(entries, weekStart, days, projectItems),
-    [entries, weekStart, days, projectItems],
+    () => deriveDailyProjectBreakdown(filteredEntries, weekStart, days, projectItems),
+    [filteredEntries, weekStart, days, projectItems],
   );
 
   const projectChartConfig = useMemo(() => {
@@ -119,6 +130,23 @@ export function WeeklyChart({ range, entries: entriesProp }: Props) {
               {activeProjects.map(p => (
                 <SelectItem key={p.id} value={p.id}>
                   {p.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {/* Department filter */}
+        {usersProp && usersProp.length > 1 && (
+          <Select value={departmentFilter} onValueChange={setDepartmentFilter}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="All departments" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All departments</SelectItem>
+              {activeDepartments.map(d => (
+                <SelectItem key={d.id} value={d.id}>
+                  {d.name}
                 </SelectItem>
               ))}
             </SelectContent>
