@@ -1,93 +1,92 @@
 
 
-# Correctness Audit + Shared `getDashboardData` Module
+# Slice 1 Implementation Plan — Non-destructive Auth Linking
 
-## Part 1: Current Architecture Map
+## Current State
 
-### Files where KPIs/charts/tables are calculated
+The previous migration (20260306) already added `profiles.auth_user_id` and updated `handle_new_user`. However, three gaps remain vs the prompt requirements:
 
-| File | What it computes | Data source |
-|---|---|---|
-| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
-| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
-| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
-| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
-| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
-| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
-| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
-| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
-| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
-| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
+1. **`resolveCallerId()` returns auth UUID directly** — JWT callers get `auth.users.id` as `callerId`, but `user_roles.user_id` references `profiles.id` (roster ID). Role checks will fail for any user where `profiles.id ≠ auth_user_id`.
 
-### Supabase queries executed
+2. **`create` action is invite-first** — It invites, waits for the trigger to create/link a profile, then updates. The prompt requires roster-first: find/create profile by email, then invite auth, then link.
 
-Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
+3. **`handle_new_user` still creates profiles for unknown emails** — The prompt says: if no matching email, do NOT insert a new profile. Only link `auth_user_id` when email matches.
 
-The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
+4. **Unique index is not partial** — Current migration uses `UNIQUE` constraint which prevents multiple NULLs in some edge cases. Should be a partial unique index (`WHERE auth_user_id IS NOT NULL`).
 
-### Where billable/maybe/not billable totals are computed — drift sources
+## Files to Touch (2)
 
-**EmployeeInsights.tsx** computes totals **3 independent times**:
+1. `supabase/migrations/*_handle_new_user_link_only.sql` — Fix trigger to link-only (no profile creation) and fix unique index to be partial.
+2. `supabase/functions/admin-users/index.ts` — Fix `resolveCallerId` and `create` action.
 
-1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
-2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
-3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
+## Migration: Fix trigger + index
 
-**AdminReportsOverview.tsx** has **2 independent computation paths**:
+```sql
+-- Drop the plain UNIQUE constraint, replace with partial unique index
+ALTER TABLE public.profiles DROP CONSTRAINT IF EXISTS profiles_auth_user_id_key;
+CREATE UNIQUE INDEX IF NOT EXISTS profiles_auth_user_id_unique
+  ON public.profiles(auth_user_id)
+  WHERE auth_user_id IS NOT NULL;
 
-1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
-2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
-3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
+-- Replace handle_new_user: link-only, no profile creation
+CREATE OR REPLACE FUNCTION public.handle_new_user()
+RETURNS trigger
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path TO 'public'
+AS $$
+BEGIN
+  -- Link existing roster profile by email; do NOT create new profiles
+  UPDATE public.profiles
+    SET auth_user_id = NEW.id
+    WHERE lower(email) = lower(NEW.email)
+      AND auth_user_id IS NULL;
 
-**Identified drift sources:**
-- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
-- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
-- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
-- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
+  -- Ensure employee role exists for linked profile
+  INSERT INTO public.user_roles (user_id, role)
+  SELECT p.id, 'employee'
+  FROM public.profiles p
+  WHERE p.auth_user_id = NEW.id
+  ON CONFLICT (user_id) DO NOTHING;
 
-## Part 2: Recommended Shared Module
-
-### Approach: `useDashboardData(params)` hook
-
-Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
-
-```text
-src/hooks/useDashboardData.ts  (NEW — ~80 lines)
-
-Input:
-  entries: TimeEntry[]           // already scoped/filtered by caller
-  range: RangeOption
-  users?: User[]                 // for team/dept breakdowns
-  weekStatuses?: WeekStatus[]    // for submission status
-
-Output:
-  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
-  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
-  topActivities: { label, minutes }[]
-  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
-  teamSummary: TeamMemberSummary[]  (if users provided)
-  reconcileResult: ReconcileResult
+  RETURN NEW;
+END;
+$$;
 ```
 
-### Key design decisions:
-- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
-- **One pass** for totals + project + activity aggregation (single loop over entries).
-- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
-- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
+## Edge Function Changes
 
-### Files to change:
-1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
-2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
-3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
+### `resolveCallerId()` — Map auth ID → roster ID
 
-### What NOT to change:
-- `useDashboardDataset.ts` — keep as-is for scope/user filtering
-- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
-- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
-- No new routes or pages
+JWT path changes from returning `user.id` directly to:
+1. Get auth user via JWT
+2. Query `profiles` where `auth_user_id = authId`
+3. Fallback: query `profiles` where `id = authId` (legacy users where IDs were previously rewritten)
+4. Return `profile.id` (roster ID)
 
-### Implementation order:
-1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
-2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
-3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
+Demo fallback (`x-acting-user-id`) stays exactly as-is.
+
+### `create` action — Roster-first flow
+
+Replace invite-first with:
+1. Normalize email
+2. Find existing profile by email, or insert new profile with `crypto.randomUUID()` as id
+3. Upsert `user_roles` with roster ID and desired appRole
+4. Invite auth user; if invite fails (already exists), find existing auth user
+5. Link: `profiles.update({ auth_user_id: authId }).eq('id', rosterId)`
+6. Return `{ success: true, userId: rosterId, authUserId: authId }`
+
+Remove the trigger-wait loop entirely.
+
+### Other actions — Already correct
+
+`update`, `toggle-active`, `bulk-import`, `provision-invite`, `send-reset`, `create-with-password`, `bulk-provision` — all already use roster IDs and set `auth_user_id` without mutating PKs. No changes needed.
+
+## What Does NOT Change
+
+- No UI/route/styling changes
+- No time entry logic changes
+- `AUTH_ENABLED` stays `false`, demo mode stays on
+- `UserContext.tsx` and `types/index.ts` not touched (already updated in prior slice)
+- `SignIn.tsx` not touched
 
