@@ -1,77 +1,70 @@
 
 
-# Plan: Personal Dashboard — Category/Project Filters, Breakdown Tables, and Trend View Toggle
+# Plan: QA Drift Fixes for Personal Dashboard
 
-## Current State
+## Issues Found
 
-**Single file**: `src/pages/EmployeeInsights.tsx` renders the entire page. It already has:
-- Time range chips (Today through This year) using `getDateWindow()` from `useDashboardDataset.ts`
-- Summary card with tri-state billing totals
-- Top Projects table (top 5 + Other, columns: Project | Hours | %)
-- Top Activities table (top 8, columns: Activity | Hours | %)
-- 6-Week Trend chart (single bar, toggle between Hours and Billable %)
-- Recent History table
+### 1. Reconciliation is a tautology (no real check)
+Lines 121-128: `summary` useMemo computes `totalMinutes` from `rangeEntries`, then passes both `rangeEntries` and `totalMinutes` to `reconcileDashboardTotals`. Since the totals are derived from the same entries in the same loop, this can never detect drift. It's checking a value against itself.
 
-**Data**: `getOwnEntries()` returns all user entries. Filtered by date range into `rangeEntries`. Projects available in `projects` array from `seed.ts` with `type: 'external_project' | 'internal_department'`.
+**Fix**: Add a second reconciliation pass that cross-checks **topProjects sum** against `summary.totalMinutes`. This catches bugs where the project aggregation diverges from the billing aggregation.
 
-**Admin Reports stacked bar logic**: `WeeklyChart.tsx` uses `deriveDailyBreakdown()` from `reportsMockData.ts` for billable/maybe/not stacked bars. This returns per-day breakdown from entries.
+### 2. Top Projects "Other" billable % uses double-rounding
+Line 159: `Math.round(p.minutes * p.billablePct / 100)` — `billablePct` is already rounded, so this loses precision. Should track raw billable minutes through the "Other" aggregation.
 
-## Changes — 2 files
+**Fix**: Track `billableMinutes` as a raw number in the sorted array, compute "Other" billable from raw values.
 
-### File 1: `src/pages/EmployeeInsights.tsx`
+### 3. No "Other" row in Top Activities table
+Top Activities shows top 8 only. The % column won't sum to 100%, which is confusing.
 
-**A) Add Category + Project filter state (lines 52-53 area)**
+**Fix**: Add an "Other" row when there are more than 8 activities, matching the Top Projects pattern.
+
+## Files to change (1)
+
+`src/pages/EmployeeInsights.tsx` — all fixes are in this file.
+
+### Change A: Fix topProjects "Other" billable precision (lines 138-162)
+
+Track raw `billableMinutes` instead of re-deriving from rounded `billablePct`:
 ```typescript
-type CategoryFilter = 'all' | 'external' | 'internal';
-const [category, setCategory] = useState<CategoryFilter>('all');
-const [projectFilter, setProjectFilter] = useState<string>('all');
-const [trendView, setTrendView] = useState<'hours' | 'billing_mix'>('hours');
+const sorted = Object.entries(map)
+  .map(([id, data]) => ({
+    id,
+    name: getProjectById(id)?.name ?? id,
+    minutes: data.minutes,
+    billableMinutes: data.billableMinutes,
+    billablePct: data.minutes > 0 ? Math.round((data.billableMinutes / data.minutes) * 100) : 0,
+  }))
+  .sort((a, b) => b.minutes - a.minutes);
+// "Other" row uses raw billableMinutes sum
+const otherBillMins = rest.reduce((s, p) => s + p.billableMinutes, 0);
 ```
 
-**B) Add filter controls below range chips (after line 168)**
-- Category: 3 chips (All / External / Internal) matching existing button style
-- Project dropdown: `<Select>` showing projects filtered by category. External projects + Leave when "External", internal projects for user's department when "Internal", both when "All". Default "All projects".
-- Reset `projectFilter` to `'all'` when `category` changes
+### Change B: Add "Other" row to Top Activities (lines 164-175)
 
-**C) Filter `rangeEntries` by category + project (modify lines 58-62)**
-Apply category filter: check `getProjectById(e.projectId)?.type` against category. Apply project filter if not `'all'`.
+After slicing top 8, compute remaining minutes and add an "Other" row if > 0.
 
-All downstream consumers (`summary`, `topProjects`, `topActivities`) already derive from `rangeEntries` — no further wiring needed.
+### Change C: Add cross-widget reconciliation (after summary useMemo)
 
-**D) Enhance Top Projects table (lines 211-238)**
-Add "Billable %" column: compute per-project billable minutes / project total minutes. Make rows clickable — `onClick` sets `setProjectFilter(p.id)`.
+Add a second `useMemo` that checks:
+- `topProjects` minutes sum === `summary.totalMinutes`
+- `topActivities` minutes sum (including Other) === `summary.totalMinutes`
 
-**E) Replace trend chart with filter-aware stacked option (lines 271-303)**
-- Replace the toggle button text: "Hours | Billing mix"
-- `trendView === 'hours'`: current single bar behavior BUT filtered by category + project
-- `trendView === 'billing_mix'`: stacked bars (billable/maybe/not) per week, reusing the same color scheme as `WeeklyChart.tsx` (`STATUS_CHART_CONFIG`)
-
-For this, change `getWeeklyTotals()` to compute from `ownEntries` filtered by category + project, or compute trend data in a `useMemo` directly from filtered entries grouped by week.
-
-**F) Compute trend from filtered entries instead of `getWeeklyTotals()`**
-Build a `useMemo` that groups filtered `ownEntries` (by category + project, across last 6 weeks) into weekly buckets with `totalMinutes`, `billableMinutes`, `maybeMinutes`, `notBillableMinutes`. This replaces the `getWeeklyTotals(currentUser.id, 6)` call.
-
-### File 2: `src/hooks/useDashboardDataset.ts`
-
-No changes needed — `getDateWindow` and `getExpectedMinutes` already exported.
-
-## Layout
-
-```text
-[Header]
-[Range chips: Today | This week | ... ]
-[Category: All | External | Internal]  [Project: dropdown]
-[Summary card]
-[Top Projects (5+Other)] [Top Activities (8)]
-[6-Week Trend — toggle: Hours | Billing mix]
-[Recent History]
+```typescript
+const widgetReconcile = useMemo(() => {
+  const projSum = topProjects.reduce((s, p) => s + p.minutes, 0);
+  const actSum = topActivities.reduce((s, a) => s + a.minutes, 0);
+  return reconcileDashboardTotals({
+    entries: rangeEntries,
+    kpiTotalMinutes: summary.totalMinutes,
+    kpiBillable: summary.billableMinutes,
+    kpiMaybe: summary.maybeMinutes,
+    kpiNotBillable: summary.notBillableMinutes,
+    teamRowsTotalMinutes: projSum, // cross-check projects table
+    label: `Personal/${range}/${category}/${projectFilter}/widgets`,
+  });
+}, [topProjects, topActivities, rangeEntries, summary, range, category, projectFilter]);
 ```
 
-## QA
-1. Default state (This week / All / All projects) matches current behavior exactly
-2. Selecting "External" hides internal projects from dropdown and tables
-3. Clicking a project row in Top Projects sets the project filter
-4. Trend chart reflects category + project filters
-5. Billing mix stacked bars show correct proportions
-6. Totals reconcile across summary card and tables for every filter combo
+Remove the reconciliation call from inside the `summary` useMemo (it's a tautology there).
 
