@@ -1,93 +1,194 @@
 
 
-# Correctness Audit + Shared `getDashboardData` Module
+# Auth Discovery Audit Report
 
-## Part 1: Current Architecture Map
+---
 
-### Files where KPIs/charts/tables are calculated
+## 1. Current User Model
 
-| File | What it computes | Data source |
+**Source of truth table**: `profiles` (Supabase, public schema)
+
+| Field | Column | Source |
 |---|---|---|
-| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
-| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
-| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
-| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
-| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
-| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
-| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
-| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
-| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
-| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
+| Identity (PK) | `id` (uuid) | `profiles.id` — currently decoupled from `auth.users`. No foreign key constraint. |
+| Name | `name` (text) | `profiles.name` |
+| Email | `email` (text, unique) | `profiles.email` |
+| Department | `department_id` (text, nullable) | `profiles.department_id` |
+| Job title | `role` (text) | `profiles.role` — this is the *job title*, not the app role |
+| Weekly hours | `weekly_expected_hours` (int, default 40) | `profiles.weekly_expected_hours` |
+| Active status | `is_active` (bool, default true) | `profiles.is_active` |
+| Avatar | `avatar_url` (text, nullable) | `profiles.avatar_url` |
+| Created | `created_at` (timestamptz) | `profiles.created_at` |
 
-### Supabase queries executed
+**App role**: Stored in a separate `user_roles` table (`user_id` uuid, `role` app_role enum). Enum values: `employee`, `hod`, `leadership`, `admin`, `super_admin`. One row per user (unique constraint on `user_id`).
 
-Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
+**Department scope** (for HODs): `user_department_scope` table (`user_id`, `department_id`).
 
-The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
+**TypeScript model**: `src/types/index.ts` — `User` interface. The `id` field is `string` (accepts both seed text IDs and real UUIDs).
 
-### Where billable/maybe/not billable totals are computed — drift sources
+**Auth-related field**: There is no explicit `auth_user_id` column. The `profiles.id` IS the auth user ID when provisioned — the `handle_new_user()` trigger does `ON CONFLICT (email) DO UPDATE SET id = NEW.id`, meaning when auth provisions a user, the profile's UUID is rewritten to match `auth.users.id`.
 
-**EmployeeInsights.tsx** computes totals **3 independent times**:
+**Confirmed**: `profiles` has no FK to `auth.users` (intentionally removed to support demo mode / CSV-imported users without auth accounts).
 
-1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
-2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
-3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
+---
 
-**AdminReportsOverview.tsx** has **2 independent computation paths**:
+## 2. Current Users Management Flow
 
-1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
-2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
-3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
+### Users page (`src/pages/admin/AdminUsers.tsx` → `src/components/admin/UsersTable.tsx`)
+- Displays `allUsersList` from `UserContext` (all profiles, including inactive)
+- Columns: Name, Email, Department, Role, App Role, Weekly Hours, Auth actions, Impersonate
 
-**Identified drift sources:**
-- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
-- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
-- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
-- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
+### "Invite User" action
+- Opens `UserDialog` for creating a new user
+- Calls `UserContext.addUser()` → invokes `admin-users` Edge Function with `action: 'create'`
+- Edge Function: calls `adminClient.auth.admin.inviteUserByEmail()`, waits for `handle_new_user` trigger to create profile, then updates profile fields and role
+- **This creates a real auth account and sends an email invite**
 
-## Part 2: Recommended Shared Module
+### Auth provisioning actions (dropdown per user row)
+- **Send Invite** (`provision-invite`): For CSV-imported profiles without auth. Creates auth user or re-sends magiclink. Syncs `profiles.id` to match `auth.users.id`.
+- **Reset Password** (`send-reset`): Generates recovery link. Fails if no auth account exists.
+- **Create Login** (`create-with-password`, super_admin only): Creates auth account with explicit password, auto-confirms email.
 
-### Approach: `useDashboardData(params)` hook
+### Bulk provisioning
+- `src/pages/admin/AdminImportExport.tsx` has a "Provision Logins" tab for batch invites.
+- Calls `UserContext.bulkProvision()` → `admin-users` Edge Function `action: 'bulk-provision'`.
 
-Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
+### Editing users
+- Admins can edit all fields via `UserDialog` → `updateUser()` → Edge Function `action: 'update'`
+- Changes are audited in `audit_log` table with before/after snapshots and mandatory reason
 
-```text
-src/hooks/useDashboardData.ts  (NEW — ~80 lines)
+### Impersonation
+- Super-admins only. `admin-impersonate` Edge Function generates a magic link for the target user, opened in new tab.
+- **Confirmed**: This is real auth impersonation, not a UI switcher.
 
-Input:
-  entries: TimeEntry[]           // already scoped/filtered by caller
-  range: RangeOption
-  users?: User[]                 // for team/dept breakdowns
-  weekStatuses?: WeekStatus[]    // for submission status
+### Demo mode user switching
+- `src/components/UserSelector.tsx`: When `DEMO_MODE=true && AUTH_ENABLED=false`, shows a dropdown of all active users. Sets `currentUser` in React state only — no auth session.
+- `src/pages/DevAccess.tsx`: Lists all profiles from DB, lets you select one or enter email manually to create synthetic admin session. No real auth.
+- `src/contexts/UserContext.tsx` line 151: `setDevUser()` — sets user in state, bypasses auth.
 
-Output:
-  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
-  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
-  topActivities: { label, minutes }[]
-  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
-  teamSummary: TeamMemberSummary[]  (if users provided)
-  reconcileResult: ReconcileResult
+---
+
+## 3. Current Auth Implementation State
+
+### Auth integration status: **FULLY IMPLEMENTED but DISABLED by default**
+
+**Control flags** (`src/lib/devMode.ts`):
+```
+AUTH_ENABLED = false  ← auth is off
+DEMO_MODE = true      ← user-switcher dropdown enabled
+DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true'
 ```
 
-### Key design decisions:
-- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
-- **One pass** for totals + project + activity aggregation (single loop over entries).
-- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
-- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
+### Files referencing auth:
 
-### Files to change:
-1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
-2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
-3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
+| File | What it does | Real vs Placeholder |
+|---|---|---|
+| `src/contexts/UserContext.tsx` | Full auth lifecycle: `onAuthStateChange`, `getSession`, `signOut`, `fetchUserProfile` | **Real** — fully wired but gated behind `AUTH_ENABLED` |
+| `src/pages/SignIn.tsx` | Sign-in + sign-up forms using `supabase.auth.signInWithPassword` and `supabase.auth.signUp` | **Real** |
+| `src/pages/DevAccess.tsx` | Dev-only user picker, bypasses auth | **Real dev tool** |
+| `src/App.tsx` → `SessionGate` | Route guard: redirects to `/sign-in` (or `/dev/access` in DEV_MODE) if no `currentUser` | **Real** but bypassed when `AUTH_ENABLED=false` |
+| `src/App.tsx` → `AdminGuard` | Checks `isAdmin` from context | **Real** |
+| `src/components/UserSelector.tsx` | Sign-out button (auth mode) or user switcher (demo mode) | **Real** |
+| `src/components/TopBar.tsx` | Contains `UserSelector` | Passive |
+| `supabase/functions/admin-users/index.ts` | `resolveCallerId()` — JWT or `x-acting-user-id` fallback | **Real** |
+| `supabase/functions/admin-impersonate/index.ts` | Magic link generation for impersonation | **Real** |
 
-### What NOT to change:
-- `useDashboardDataset.ts` — keep as-is for scope/user filtering
-- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
-- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
-- No new routes or pages
+### Partial/broken auth logic: **None**. The auth implementation is complete and functional. It's simply toggled off via `AUTH_ENABLED = false`.
 
-### Implementation order:
-1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
-2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
-3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
+---
+
+## 4. Current Routing and Access Behaviour
+
+### Public routes (no session required):
+- `/sign-in` — Sign in/up page
+- `/dev/access` — Dev mode user picker
+
+### Protected routes (behind `SessionGate`):
+- `/` — Employee timesheet (Index)
+- `/me/insights` — Employee personal dashboard
+- `/admin` — Admin dashboard (additionally behind `AdminGuard`)
+- `/admin/reports/overview`, `/admin/reference-data`, `/admin/users`, `/admin/import-export`, `/admin/roles`, `/admin/audit`
+
+### How active user is determined today (AUTH_ENABLED=false):
+1. App loads → `UserProvider` runs the "auth-disabled" effect
+2. Fetches all profiles + roles from Supabase via anon key
+3. Auto-selects first admin/super_admin as `currentUser`
+4. `SessionGate` sees `currentUser` is set → renders children
+5. User can switch via the dropdown in `TopBar`
+
+### When AUTH_ENABLED=true:
+1. `onAuthStateChange` + `getSession()` check for existing session
+2. If no session → redirect to `/sign-in` (or `/dev/access` if DEV_MODE)
+3. On sign-in → `fetchUserProfile(session.user.id)` loads from `profiles` + `user_roles`
+4. On sign-out → clears state, supabase session destroyed
+5. Failed sign-in → error message displayed on form, no redirect
+
+---
+
+## 5. Supabase and Environment Configuration
+
+### Environment variables:
+- `VITE_SUPABASE_URL` — used by client
+- `VITE_SUPABASE_PUBLISHABLE_KEY` — anon key, used by client
+- `VITE_SUPABASE_PROJECT_ID` — available but not used in app code
+- `VITE_DEV_MODE` — controls dev mode features
+
+### Supabase client: `src/integrations/supabase/client.ts` (auto-generated, DO NOT EDIT)
+
+### Files depending on Supabase client:
+- `src/contexts/UserContext.tsx` — auth + profile queries
+- `src/contexts/ReferenceDataContext.tsx` — reference data loads
+- `src/contexts/TimeEntriesContext.tsx` — uses seed data, not Supabase for time entries
+- `src/components/admin/UsersTable.tsx` — impersonation edge function calls
+- `src/pages/SignIn.tsx` — auth calls
+- `src/pages/DevAccess.tsx` — profile/role queries
+
+### Service-role operations in frontend: **NONE**. All privileged operations (user creation, role changes, impersonation) go through Edge Functions that use `SUPABASE_SERVICE_ROLE_KEY` server-side.
+
+### Edge Function config (`supabase/config.toml`):
+```toml
+[functions.admin-users]
+verify_jwt = false
+[functions.admin-impersonate]
+verify_jwt = false
+```
+Both use `resolveCallerId()` for manual auth validation.
+
+---
+
+## 6. Risks and Fragile Areas
+
+### Risk 1: Profile ID rewrite on auth provisioning
+The `handle_new_user()` trigger does `ON CONFLICT (email) DO UPDATE SET id = NEW.id`. When a CSV-imported profile (with a random UUID) gets an auth invite, the profile's PK changes. This cascades to `user_roles` and `user_department_scope` via Edge Function logic — but `time_entries.user_id` has **no cascade**. Existing time entries would become orphaned.
+
+**Confirmed**: `time_entries.user_id` has no FK constraint, so no cascade. The Edge Function (`provision-invite`) manually updates `profiles.id` and `user_roles.user_id` but does NOT update `time_entries.user_id`.
+
+### Risk 2: Seed data vs DB data divergence
+`src/data/seed.ts` contains hardcoded users with text IDs like `'user-ilo'`. The database has real UUIDs. The `TimeEntriesContext` currently loads from seed data, not the database. If auth is enabled, `currentUser.id` will be a real UUID, but seed time entries reference text IDs → zero entries will match.
+
+### Risk 3: Demo mode dependencies
+Multiple components check `AUTH_ENABLED`, `DEMO_MODE`, `DEV_MODE`. Flipping `AUTH_ENABLED` to `true` requires:
+- Users to have real auth accounts (invites sent)
+- Time entries to be in the database (not seed data)
+- The `x-acting-user-id` fallback in Edge Functions becomes unused
+
+### Risk 4: RLS policies assume auth
+`time_entries` RLS: `user_id = auth.uid()` — this works only with real auth sessions. Currently bypassed because the app uses seed data in-memory. If the app switches to querying `time_entries` from Supabase with `AUTH_ENABLED=false`, anon reads would fail (no `auth.uid()`). The open-access policies mentioned in architecture notes may have been removed or may only be on specific tables.
+
+### Risk 5: `isAdmin` includes `leadership`
+`UserContext.tsx` line 307: `isAdmin` is true for `admin`, `super_admin`, AND `leadership`. This means leadership users can access all admin routes. This is a design choice, not a bug, but could surprise if auth policies diverge.
+
+---
+
+## 7. Unknowns (Cannot Verify from Code Alone)
+
+1. **Which profiles have auth accounts**: The `profiles` table has 27 rows but we cannot query `auth.users` from the client to know which have been provisioned. The `provision-invite` Edge Function checks via `admin.listUsers()` but this data isn't exposed to the frontend.
+
+2. **Email confirmation setting**: Whether auto-confirm is enabled in auth settings. The `SignIn.tsx` sign-up flow shows "Check your email for a confirmation link" suggesting auto-confirm is OFF, but this needs dashboard verification.
+
+3. **Trigger existence**: The schema info says "There are no triggers in the database" but `handle_new_user()` function exists. The trigger may be attached to `auth.users` (a reserved schema not visible in the query). Cannot confirm it's active without dashboard access.
+
+4. **Time entries in database**: `TimeEntriesContext` uses seed data. Whether any real time entries exist in the `time_entries` table is unknown — the context never queries it.
+
+5. **Open-access RLS policies**: Architecture notes mention open-access policies on `time_entries` and `week_statuses` for demo mode, but the current RLS policies shown require `auth.uid()`. These may have been changed since the notes were written.
 
