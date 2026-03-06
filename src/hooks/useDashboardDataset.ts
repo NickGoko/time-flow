@@ -14,6 +14,51 @@ export function getExpectedMinutes(range: RangeOption, days: number): number {
   return workingDays * 8 * 60;
 }
 
+export function getDateWindow(range: RangeOption): { weekStart: string; days: number; rangeStartDate: Date; rangeEndDate: Date } {
+  const now = new Date();
+  if (range === 'this_week') {
+    const ws = getWeekStart(now);
+    const start = parseLocalDate(ws);
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
+  }
+  if (range === 'last_week') {
+    const d = new Date(now); d.setDate(d.getDate() - 7);
+    const ws = getWeekStart(d);
+    const start = parseLocalDate(ws);
+    const end = new Date(start); end.setDate(end.getDate() + 6);
+    return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
+  }
+  if (range === 'today') {
+    const ws = getWeekStart(now);
+    const dayOfWeek = (now.getDay() + 6) % 7;
+    return { weekStart: ws, days: dayOfWeek + 1, rangeStartDate: now, rangeEndDate: now };
+  }
+  if (range === 'this_quarter') {
+    const qMonth = Math.floor(now.getMonth() / 3) * 3;
+    const first = new Date(now.getFullYear(), qMonth, 1);
+    const ws = getWeekStart(first);
+    const start = parseLocalDate(ws);
+    const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    return { weekStart: ws, days: Math.min(totalDays, 100), rangeStartDate: start, rangeEndDate: now };
+  }
+  if (range === 'this_year') {
+    const first = new Date(now.getFullYear(), 0, 1);
+    const ws = getWeekStart(first);
+    const start = parseLocalDate(ws);
+    const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+    return { weekStart: ws, days: Math.min(totalDays, 366), rangeStartDate: start, rangeEndDate: now };
+  }
+  // this_month
+  const first = new Date(now.getFullYear(), now.getMonth(), 1);
+  const dayCount = now.getDate();
+  const ws = getWeekStart(first);
+  const start = parseLocalDate(ws);
+  const totalDays = Math.min(dayCount + (first.getDay() === 0 ? 6 : first.getDay() - 1), 35);
+  const end = new Date(start); end.setDate(end.getDate() + totalDays - 1);
+  return { weekStart: ws, days: totalDays, rangeStartDate: start, rangeEndDate: end };
+}
+
 export function useDashboardDataset(scope: ScopeOption, selectedDeptId: string, range: RangeOption) {
   const { getAllEntries, weekStatuses, validationEvents } = useTimeEntries();
   const entries = getAllEntries();
@@ -49,50 +94,7 @@ export function useDashboardDataset(scope: ScopeOption, selectedDeptId: string, 
     return weekStatuses.filter(ws => scopedUserIds.has(ws.userId));
   }, [weekStatuses, scopedUsers]);
 
-  const { weekStart, days, rangeStartDate, rangeEndDate } = useMemo(() => {
-    const now = new Date();
-    if (range === 'this_week') {
-      const ws = getWeekStart(now);
-      const start = parseLocalDate(ws);
-      const end = new Date(start); end.setDate(end.getDate() + 6);
-      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
-    }
-    if (range === 'last_week') {
-      const d = new Date(now); d.setDate(d.getDate() - 7);
-      const ws = getWeekStart(d);
-      const start = parseLocalDate(ws);
-      const end = new Date(start); end.setDate(end.getDate() + 6);
-      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
-    }
-    if (range === 'today') {
-      const ws = getWeekStart(now);
-      const dayOfWeek = (now.getDay() + 6) % 7;
-      return { weekStart: ws, days: dayOfWeek + 1, rangeStartDate: now, rangeEndDate: now };
-    }
-    if (range === 'this_quarter') {
-      const qMonth = Math.floor(now.getMonth() / 3) * 3;
-      const first = new Date(now.getFullYear(), qMonth, 1);
-      const ws = getWeekStart(first);
-      const start = parseLocalDate(ws);
-      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      return { weekStart: ws, days: Math.min(totalDays, 100), rangeStartDate: start, rangeEndDate: now };
-    }
-    if (range === 'this_year') {
-      const first = new Date(now.getFullYear(), 0, 1);
-      const ws = getWeekStart(first);
-      const start = parseLocalDate(ws);
-      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      return { weekStart: ws, days: Math.min(totalDays, 366), rangeStartDate: start, rangeEndDate: now };
-    }
-    // this_month
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const dayCount = now.getDate();
-    const ws = getWeekStart(first);
-    const start = parseLocalDate(ws);
-    const totalDays = Math.min(dayCount + (first.getDay() === 0 ? 6 : first.getDay() - 1), 35);
-    const end = new Date(start); end.setDate(end.getDate() + totalDays - 1);
-    return { weekStart: ws, days: totalDays, rangeStartDate: start, rangeEndDate: end };
-  }, [range]);
+  const { weekStart, days, rangeStartDate, rangeEndDate } = useMemo(() => getDateWindow(range), [range]);
 
   const metrics = useMemo(() => deriveMetrics(scopedEntries, weekStart, days), [scopedEntries, weekStart, days]);
   const insights = useMemo(

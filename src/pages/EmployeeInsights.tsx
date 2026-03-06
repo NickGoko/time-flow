@@ -11,77 +11,110 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { toLocalDateString, parseLocalDate, getWeekStart, getWeekDate } from '@/data/seed';
-import { getProjectById } from '@/data/seed';
+import { toLocalDateString, parseLocalDate, getProjectById, getPhaseById, getActivityTypeById, internalWorkAreas } from '@/data/seed';
 import {
   formatHours,
   toTotalMinutes,
-  WEEKLY_EXPECTED_HOURS,
-  HOURS_PER_DAY_TARGET,
 } from '@/types';
 import { cn, getProgressColor } from '@/lib/utils';
+import { type RangeOption, getDateWindow, getExpectedMinutes } from '@/hooks/useDashboardDataset';
+
+const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
+  { value: 'today', label: 'Today' },
+  { value: 'this_week', label: 'This week' },
+  { value: 'last_week', label: 'Last week' },
+  { value: 'this_month', label: 'This month' },
+  { value: 'this_quarter', label: 'This quarter' },
+  { value: 'this_year', label: 'This year' },
+];
+
+function getActivityLabel(entry: { phaseId?: string; activityTypeId?: string; workAreaId?: string; workAreaActivityTypeId?: string }): string {
+  if (entry.phaseId) {
+    const phase = getPhaseById(entry.phaseId);
+    const activity = entry.activityTypeId ? getActivityTypeById(entry.activityTypeId) : undefined;
+    if (phase && activity) return `${phase.name} → ${activity.name}`;
+    if (phase) return phase.name;
+  }
+  if (entry.workAreaId) {
+    const wa = internalWorkAreas.find(w => w.id === entry.workAreaId);
+    const waPhase = wa ? getPhaseById(wa.phaseId) : undefined;
+    const activity = entry.workAreaActivityTypeId ? getActivityTypeById(entry.workAreaActivityTypeId) : undefined;
+    const areaName = waPhase?.name ?? wa?.name ?? 'Internal';
+    return activity ? `${areaName} → ${activity.name}` : areaName;
+  }
+  return 'Uncategorised';
+}
 
 const EmployeeInsights = () => {
   const { currentUser } = useAuthenticatedUser();
-  const {
-    getOwnEntries,
-    getWeekSummary,
-    isWeekSubmitted,
-    getWeeklyTotals,
-    getRecentDays,
-  } = useTimeEntries();
-
-  const [showBillablePercent, setShowBillablePercent] = useState(false);
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayStr = toLocalDateString(today);
-  const currentWeekStart = getWeekStart(today);
+  const { getOwnEntries, getWeeklyTotals, getRecentDays } = useTimeEntries();
+  const [range, setRange] = useState<RangeOption>('this_week');
 
   const ownEntries = getOwnEntries();
-  // ── Section 1: Today ──────────────────────────────────────────────
-  const todayEntries = useMemo(
-    () => ownEntries.filter(e => e.userId === currentUser.id && e.date === todayStr),
-    [ownEntries, currentUser.id, todayStr]
-  );
+  const { rangeStartDate, rangeEndDate, days } = useMemo(() => getDateWindow(range), [range]);
 
-  const todayMinutes = useMemo(
-    () => todayEntries.reduce((sum, e) => sum + toTotalMinutes(e.hours, e.minutes), 0),
-    [todayEntries]
-  );
+  // ── Range-filtered entries ─────────────────────────────────────────
+  const rangeEntries = useMemo(() => {
+    const startStr = toLocalDateString(rangeStartDate);
+    const endStr = toLocalDateString(rangeEndDate);
+    return ownEntries.filter(e => e.userId === currentUser.id && e.date >= startStr && e.date <= endStr);
+  }, [ownEntries, currentUser.id, rangeStartDate, rangeEndDate]);
 
-  const todayBillable = useMemo(
-    () => todayEntries.filter(e => e.billableStatus === 'billable').reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0),
-    [todayEntries]
-  );
-  const todayMaybe = useMemo(
-    () => todayEntries.filter(e => e.billableStatus === 'maybe_billable').reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0),
-    [todayEntries]
-  );
-  const todayNotBillable = todayMinutes - todayBillable - todayMaybe;
-  const todayTarget = HOURS_PER_DAY_TARGET * 60;
-  const todayMissing = Math.max(0, todayTarget - todayMinutes);
-
-  // ── Section 2: This Week ──────────────────────────────────────────
-  const weekSummary = getWeekSummary(currentUser.id, currentWeekStart);
-  const weekSubmitted = isWeekSubmitted(currentUser.id, currentWeekStart);
-  const expectedWeekMinutes = WEEKLY_EXPECTED_HOURS * 60;
-  const weekProgress = Math.round((weekSummary.totalMinutes / expectedWeekMinutes) * 100);
-
-  const topProjects = useMemo(() => {
-    const projectTotals: Record<string, number> = {};
-    for (const dayEntries of Object.values(weekSummary.entriesByDay)) {
-      for (const e of dayEntries) {
-        projectTotals[e.projectId] = (projectTotals[e.projectId] || 0) + toTotalMinutes(e.hours, e.minutes);
-      }
+  // ── Aggregated summary ─────────────────────────────────────────────
+  const summary = useMemo(() => {
+    let totalMinutes = 0, billableMinutes = 0, maybeMinutes = 0, notBillableMinutes = 0;
+    for (const e of rangeEntries) {
+      const mins = toTotalMinutes(e.hours, e.minutes);
+      totalMinutes += mins;
+      if (e.billableStatus === 'billable') billableMinutes += mins;
+      else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
+      else notBillableMinutes += mins;
     }
-    return Object.entries(projectTotals)
-      .map(([id, mins]) => ({ id, name: getProjectById(id)?.name ?? id, minutes: mins }))
-      .sort((a, b) => b.minutes - a.minutes)
-      .slice(0, 5);
-  }, [weekSummary]);
+    // Dev reconciliation check
+    console.assert(
+      billableMinutes + maybeMinutes + notBillableMinutes === totalMinutes,
+      `Billing mix mismatch: ${billableMinutes}+${maybeMinutes}+${notBillableMinutes} !== ${totalMinutes}`
+    );
+    return { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes };
+  }, [rangeEntries]);
 
-  // ── Section 3: Trend ──────────────────────────────────────────────
+  const expectedMinutes = getExpectedMinutes(range, days);
+  const progressPct = expectedMinutes > 0 ? Math.round((summary.totalMinutes / expectedMinutes) * 100) : 0;
+  const progressColor = getProgressColor(progressPct);
+  const overtime = Math.max(0, summary.totalMinutes - expectedMinutes);
+  const remaining = Math.max(0, expectedMinutes - summary.totalMinutes);
+
+  // ── Top Projects ───────────────────────────────────────────────────
+  const topProjects = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of rangeEntries) {
+      map[e.projectId] = (map[e.projectId] || 0) + toTotalMinutes(e.hours, e.minutes);
+    }
+    const sorted = Object.entries(map)
+      .map(([id, mins]) => ({ id, name: getProjectById(id)?.name ?? id, minutes: mins }))
+      .sort((a, b) => b.minutes - a.minutes);
+    if (sorted.length <= 5) return sorted;
+    const top5 = sorted.slice(0, 5);
+    const otherMins = sorted.slice(5).reduce((s, p) => s + p.minutes, 0);
+    top5.push({ id: '__other__', name: 'Other', minutes: otherMins });
+    return top5;
+  }, [rangeEntries]);
+
+  // ── Top Activities ─────────────────────────────────────────────────
+  const topActivities = useMemo(() => {
+    const map: Record<string, number> = {};
+    for (const e of rangeEntries) {
+      const label = getActivityLabel(e);
+      map[label] = (map[label] || 0) + toTotalMinutes(e.hours, e.minutes);
+    }
+    return Object.entries(map)
+      .map(([label, mins]) => ({ label, minutes: mins }))
+      .sort((a, b) => b.minutes - a.minutes)
+      .slice(0, 8);
+  }, [rangeEntries]);
+
+  // ── 6-Week Trend (unchanged) ───────────────────────────────────────
+  const [showBillablePercent, setShowBillablePercent] = useState(false);
   const weeklyTotals = getWeeklyTotals(currentUser.id, 6);
 
   const chartConfig: ChartConfig = {
@@ -93,14 +126,10 @@ const EmployeeInsights = () => {
     const d = parseLocalDate(w.weekStart);
     const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
     const billPct = w.totalMinutes > 0 ? Math.round((w.billableMinutes / w.totalMinutes) * 100) : 0;
-    return {
-      week: label,
-      hours: +(w.totalMinutes / 60).toFixed(1),
-      billablePercent: billPct,
-    };
+    return { week: label, hours: +(w.totalMinutes / 60).toFixed(1), billablePercent: billPct };
   });
 
-  // ── Section 4: History ────────────────────────────────────────────
+  // ── Recent History (unchanged) ─────────────────────────────────────
   const recentDays = getRecentDays(currentUser.id, 28);
 
   return (
@@ -118,75 +147,68 @@ const EmployeeInsights = () => {
           </div>
         </div>
 
-        {/* Section 1: Today */}
+        {/* Range chips */}
+        <div className="flex flex-wrap gap-2">
+          {RANGE_OPTIONS.map(opt => (
+            <Button
+              key={opt.value}
+              variant={range === opt.value ? 'default' : 'outline'}
+              size="sm"
+              className="h-8 text-xs"
+              onClick={() => setRange(opt.value)}
+            >
+              {opt.label}
+            </Button>
+          ))}
+        </div>
+
+        {/* Summary card */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium flex items-center gap-2">
-              <Clock className="h-4 w-4" /> Today
+              <Clock className="h-4 w-4" /> Summary
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            {(() => {
-              const todayPct = Math.round((todayMinutes / todayTarget) * 100);
-              const todayColor = getProgressColor(todayPct);
-              const todayOT = Math.max(0, todayMinutes - todayTarget);
-              return (
-                <div className="flex flex-col sm:flex-row sm:items-end gap-4">
-                  <div>
-                    <span className={cn("text-3xl font-bold tabular-nums", todayColor.text)}>{formatHours(todayMinutes)}h</span>
-                    <span className="text-muted-foreground text-sm ml-2">/ {HOURS_PER_DAY_TARGET}h ({todayPct}%)</span>
-                    {todayOT > 0 && <span className="text-success text-sm ml-1.5">· Overtime +{formatHours(todayOT)}h</span>}
-                  </div>
-                  <div className="flex gap-4 text-sm text-muted-foreground">
-                    <span>Billable: {formatHours(todayBillable)}h</span>
-                    <span>Maybe: {formatHours(todayMaybe)}h</span>
-                    <span>Non-billable: {formatHours(todayNotBillable)}h</span>
-                  </div>
-                  {todayMissing > 0 && (
-                    <div className="flex items-center gap-1.5 text-sm text-warning">
-                      <AlertCircle className="h-3.5 w-3.5" />
-                      {formatHours(todayMissing)}h remaining
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-sm">
+                <span className="text-muted-foreground">Progress</span>
+                <span className={cn('font-medium tabular-nums', progressColor.text)}>
+                  {formatHours(summary.totalMinutes)}h / {formatHours(expectedMinutes)}h ({progressPct}%)
+                  {overtime > 0 && <span className="ml-1.5 text-success">· Overtime +{formatHours(overtime)}h</span>}
+                </span>
+              </div>
+              <Progress value={Math.min(100, progressPct)} className="h-2" />
+            </div>
+            <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
+              <span>Billable: {formatHours(summary.billableMinutes)}h</span>
+              <span>Maybe: {formatHours(summary.maybeMinutes)}h</span>
+              <span>Non-billable: {formatHours(summary.notBillableMinutes)}h</span>
+            </div>
+            {remaining > 0 && (
+              <div className="flex items-center gap-1.5 text-sm text-warning">
+                <AlertCircle className="h-3.5 w-3.5" />
+                {formatHours(remaining)}h remaining
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Section 2: This Week */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base font-medium">This Week</CardTitle>
-              {weekSubmitted ? (
-                <Badge variant="secondary">Submitted</Badge>
-              ) : (
-                <Badge variant="outline">In progress</Badge>
-              )}
-            </div>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {(() => {
-              const wkColor = getProgressColor(weekProgress);
-              const wkOT = Math.max(0, weekSummary.totalMinutes - expectedWeekMinutes);
-              return (
-                <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Weekly progress</span>
-                    <span className={cn("font-medium tabular-nums", wkColor.text)}>
-                      {formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h ({weekProgress}%)
-                      {wkOT > 0 && <span className="ml-1.5 text-success">· Overtime +{formatHours(wkOT)}h</span>}
-                    </span>
-                  </div>
-                  <Progress value={Math.min(100, weekProgress)} className="h-2" />
-                </div>
-              );
-            })()}
-
-            {topProjects.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium mb-2 text-muted-foreground">Top projects</h4>
+        {/* Breakdown tables */}
+        {rangeEntries.length === 0 ? (
+          <Card>
+            <CardContent className="py-8">
+              <p className="text-sm text-muted-foreground text-center">No entries for this period</p>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Top Projects */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-medium">Top projects</CardTitle>
+              </CardHeader>
+              <CardContent>
                 <Table>
                   <TableHeader>
                     <TableRow>
@@ -201,18 +223,47 @@ const EmployeeInsights = () => {
                         <TableCell className="py-1.5 text-sm">{p.name}</TableCell>
                         <TableCell className="py-1.5 text-sm text-right tabular-nums">{formatHours(p.minutes)}h</TableCell>
                         <TableCell className="py-1.5 text-sm text-right tabular-nums">
-                          {weekSummary.totalMinutes > 0 ? Math.round((p.minutes / weekSummary.totalMinutes) * 100) : 0}%
+                          {summary.totalMinutes > 0 ? Math.round((p.minutes / summary.totalMinutes) * 100) : 0}%
                         </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
 
-        {/* Section 3: Trend */}
+            {/* Top Activities */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base font-medium">Top activities / tasks</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="h-8 text-xs">Activity</TableHead>
+                      <TableHead className="h-8 text-xs text-right">Hours</TableHead>
+                      <TableHead className="h-8 text-xs text-right">%</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {topActivities.map(a => (
+                      <TableRow key={a.label}>
+                        <TableCell className="py-1.5 text-sm">{a.label}</TableCell>
+                        <TableCell className="py-1.5 text-sm text-right tabular-nums">{formatHours(a.minutes)}h</TableCell>
+                        <TableCell className="py-1.5 text-sm text-right tabular-nums">
+                          {summary.totalMinutes > 0 ? Math.round((a.minutes / summary.totalMinutes) * 100) : 0}%
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* 6-Week Trend */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
@@ -246,7 +297,7 @@ const EmployeeInsights = () => {
           </CardContent>
         </Card>
 
-        {/* Section 4: History */}
+        {/* Recent History */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium">Recent History</CardTitle>
