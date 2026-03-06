@@ -1,95 +1,110 @@
 
 
-# Plan: Personal Dashboard — Time Range Controls, Shared Aggregation, and Breakdown Tables
+# Plan: Drift Detector — Reconciliation Check for Reports Overview + Personal Dashboard
 
-## 1. Audit — Current State
+## Summary
 
-### File map
+Create a shared `reconcileDashboardTotals` helper that validates billing mix consistency and entry-level totals. Wire it into both pages on every filter change. Surface mismatches in DEV_MODE via console warnings, and add a "Reconciliation mismatch" line to the existing Data Quality card on Reports Overview.
 
-| File | Role |
-|---|---|
-| `src/pages/EmployeeInsights.tsx` | Page component at `/me/insights`. 4 sections: Today card, This Week card (with top projects table), 6-Week Trend chart, Recent History table |
-| `src/components/PersonalDashboard.tsx` | Small 4-card grid on the Index page (not the Dashboard page) |
-| `src/hooks/useDashboardDataset.ts` | Shared hook used by AdminReportsOverview. Has `RangeOption` type and `getExpectedMinutes()` |
-| `src/contexts/TimeEntriesContext.tsx` | Provides `getOwnEntries()`, `getWeekSummary()`, `getWeeklyTotals()`, `getRecentDays()` |
-| `src/data/seed.ts` | `getProjectById()`, `getPhaseById()`, `getActivityTypeById()`, `getEntryWithDetails()` |
-
-### Current date computation
-
-- **Today**: hardcoded `new Date()` → `toLocalDateString(today)` → filters `ownEntries` by date string
-- **This Week**: `getWeekStart(today)` → `getWeekSummary(userId, weekStart)` which internally filters entries for 7 days
-- **Trend**: `getWeeklyTotals(userId, 6)` — last 6 weeks, hardcoded
-- **History**: `getRecentDays(userId, 28)` — last 28 days, hardcoded
-
-### Shared helpers available
-
-`useDashboardDataset` already has `RangeOption` type (`today | this_week | last_week | this_month | this_quarter | this_year`) and date window computation. Can reuse `RangeOption` type and the date window logic. However, the hook itself is admin-oriented (scoped users, departments). For the personal dashboard, we just need the date window computation — we can import and reuse `RangeOption` and the date range math.
-
-### Entry structure
-
-`TimeEntry` has: `projectId`, `phaseId`, `activityTypeId`, `workAreaId`, `workAreaActivityTypeId`, `billableStatus`, `hours`, `minutes`, `date`.
-
-Resolvers exist: `getProjectById()`, `getPhaseById()`, `getActivityTypeById()`.
-
-## 2. Implementation Plan
-
-### Files to change (2)
+## Files to change (4)
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/pages/EmployeeInsights.tsx` | Add range chips, recompute all sections from range-filtered entries, add Top Projects and Top Activities tables |
-| 2 | `src/hooks/useDashboardDataset.ts` | Extract `getDateWindow(range)` as a standalone exported function (currently inline in the hook). Both pages reuse it. |
+| 1 | `src/lib/reconcile.ts` | **New.** Shared reconciliation helper |
+| 2 | `src/pages/AdminReportsOverview.tsx` | Run reconciliation on filter change, surface mismatch in Data Quality card |
+| 3 | `src/pages/EmployeeInsights.tsx` | Run reconciliation on range change (replace existing `console.assert`) |
+| 4 | `src/lib/devMode.ts` | No change needed — already exports `DEV_MODE` |
 
-### Detailed changes
+## Detailed changes
 
-**`src/hooks/useDashboardDataset.ts`** — Extract date window logic
+### `src/lib/reconcile.ts` — New shared helper
 
-Export a pure function:
 ```typescript
-export function getDateWindow(range: RangeOption): { weekStart: string; days: number; rangeStartDate: Date; rangeEndDate: Date }
+import { DEV_MODE } from './devMode';
+
+interface ReconcileInput {
+  entries: { billableStatus: string; hours: number; minutes: number }[];
+  kpiTotalMinutes: number;
+  kpiBillable: number;
+  kpiMaybe: number;
+  kpiNotBillable: number;
+  teamRowsTotalMinutes?: number; // sum of team table Hours column
+  label: string; // e.g. "Reports/Org/this_week"
+}
+
+interface ReconcileResult {
+  hasMismatch: boolean;
+  details: string[];
+}
+
+export function reconcileDashboardTotals(input: ReconcileInput): ReconcileResult {
+  const TOLERANCE = 1; // 1 minute
+  const details: string[] = [];
+
+  // Check 1: Billable + Maybe + Not billable == Total
+  const billingSum = input.kpiBillable + input.kpiMaybe + input.kpiNotBillable;
+  if (Math.abs(billingSum - input.kpiTotalMinutes) > TOLERANCE) {
+    details.push(`Billing mix: ${input.kpiBillable}+${input.kpiMaybe}+${input.kpiNotBillable}=${billingSum} vs total=${input.kpiTotalMinutes}`);
+  }
+
+  // Check 2: KPI total matches sum of entry minutes
+  const entrySum = input.entries.reduce((s, e) => s + (e.hours * 60 + e.minutes), 0);
+  if (Math.abs(entrySum - input.kpiTotalMinutes) > TOLERANCE) {
+    details.push(`Entry sum: ${entrySum} vs KPI total: ${input.kpiTotalMinutes}`);
+  }
+
+  // Check 3: Team table sum matches total (if provided)
+  if (input.teamRowsTotalMinutes !== undefined) {
+    if (Math.abs(input.teamRowsTotalMinutes - input.kpiTotalMinutes) > TOLERANCE) {
+      details.push(`Team table sum: ${input.teamRowsTotalMinutes} vs KPI total: ${input.kpiTotalMinutes}`);
+    }
+  }
+
+  if (details.length > 0 && DEV_MODE) {
+    console.warn(`[Reconcile/${input.label}] Mismatch detected:`, details);
+  }
+
+  return { hasMismatch: details.length > 0, details };
+}
 ```
 
-This is the same logic currently on lines 52-95, extracted so `EmployeeInsights` can call it without using the full hook. The hook itself calls `getDateWindow(range)` internally (no behavior change).
+### `src/pages/AdminReportsOverview.tsx`
 
-**`src/pages/EmployeeInsights.tsx`** — Major rework
+- Import `reconcileDashboardTotals` from `@/lib/reconcile`
+- Add a `useMemo` that runs reconciliation using `metrics` (from hook), `scopedEntries`, and team summary totals
+- In the Data Quality card (lines 116-128), add a conditional line below the existing backdated entries content:
+  ```
+  {reconcileResult.hasMismatch && (
+    <p className="text-xs text-destructive mt-1">Reconciliation mismatch</p>
+  )}
+  ```
+- Include QA matrix as a code comment block at the bottom of the file
 
-1. **Range state**: Add `const [range, setRange] = useState<RangeOption>('this_week')`. Render 6 chip buttons matching Reports Overview style.
+### `src/pages/EmployeeInsights.tsx`
 
-2. **Filtered entries**: Use `getDateWindow(range)` to get `rangeStartDate`/`rangeEndDate`. Filter `ownEntries` to entries within that window:
-   ```typescript
-   const rangeEntries = useMemo(() => {
-     const startStr = toLocalDateString(rangeStartDate);
-     const endStr = toLocalDateString(rangeEndDate);
-     return ownEntries.filter(e => e.date >= startStr && e.date <= endStr);
-   }, [ownEntries, rangeStartDate, rangeEndDate]);
-   ```
+- Import `reconcileDashboardTotals`
+- Replace the existing `console.assert` (line 74-77) with a call to `reconcileDashboardTotals` passing `rangeEntries`, `summary.*` values, and label `Personal/${range}`
+- No UI flag needed here (no Data Quality card on personal dashboard)
 
-3. **Summary card** (replaces Today + This Week cards): Single summary card showing:
-   - Total hours vs expected (using `getExpectedMinutes(range, days)`)
-   - Progress bar
-   - Tri-state breakdown: Billable / Maybe billable / Not billable
-   - Reconciliation check in dev console: `console.assert(bill + maybe + notBill === total)`
+### QA test matrix (included as code comment)
 
-4. **Top Projects table**: Top 5 projects by hours from `rangeEntries`, with "Other" row if >5. Columns: Project | Hours | %. Uses `getProjectById()` for names.
-
-5. **Top Activities table**: Top 8 activities by hours from `rangeEntries`. Columns: Activity | Hours | %. Activity label logic:
-   - External entry (`phaseId` set): `${getPhaseById(phaseId)?.name} → ${getActivityTypeById(activityTypeId)?.name}`
-   - Internal entry (`workAreaId` set): `${getPhaseById(workAreaId)?.name} → ${getActivityTypeById(workAreaActivityTypeId)?.name ?? 'Other'}`
-   - Fallback: "Uncategorised"
-
-6. **Layout order**: Range chips → Summary card → Top Projects + Top Activities (side by side on desktop, stacked on mobile) → 6-Week Trend chart → Recent History table.
-
-7. **Empty state**: If `rangeEntries.length === 0`, show "No entries for this period" message. Keep Trend and History visible below.
-
-8. **Keep existing sections**: Trend chart and Recent History remain unchanged (they show fixed 6-week / 28-day windows regardless of range, which is useful context).
-
-### QA checklist
-
-1. Default "This week" shows same data as before
-2. Switch to each range — summary numbers update, tables update
-3. Billable + Maybe + Not billable = Total (check console for assertion)
-4. Top Projects shows correct project names and percentages sum to ~100%
-5. Top Activities shows correct labels for both external and internal entries
-6. Empty range (e.g., future week) shows empty state message
-7. Trend chart and History table remain unaffected by range selection
+```
+// ── QA Reconciliation Test Matrix ────────────────────────────────
+// SMOKE TEST (highest value combos — test these first):
+//  1. Org + This week + By status
+//  2. Org + This month + By project
+//  3. Department + This week + By department
+//  4. My dashboard + Today + By status
+//  5. Org + This quarter + By status
+//
+// FULL MATRIX:
+//  Scopes: My dashboard, Department, Organisation
+//  Ranges: Today, This week, Last week, This month, This quarter, This year
+//  Breakdowns: By status, By project, By department
+//  Total combos: 3 × 6 × 3 = 54
+//
+// Personal Dashboard:
+//  Ranges: Today, This week, Last week, This month, This quarter, This year
+//  Total combos: 6
+```
 
