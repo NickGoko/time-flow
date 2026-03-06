@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Clock, TrendingUp, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -12,14 +12,14 @@ import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { toLocalDateString, parseLocalDate, getProjectById, getPhaseById, getActivityTypeById, internalWorkAreas, projects, getWeekStart } from '@/data/seed';
+import { toLocalDateString, parseLocalDate, getProjectById, internalWorkAreas, projects, getWeekStart } from '@/data/seed';
 import {
   formatHours,
   toTotalMinutes,
 } from '@/types';
 import { cn, getProgressColor } from '@/lib/utils';
 import { type RangeOption, getDateWindow, getExpectedMinutes } from '@/hooks/useDashboardDataset';
-import { reconcileDashboardTotals } from '@/lib/reconcile';
+import { useDashboardData } from '@/hooks/useDashboardData';
 
 const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
   { value: 'today', label: 'Today' },
@@ -44,22 +44,6 @@ const STATUS_CHART_CONFIG: ChartConfig = {
   notBillable: { label: 'Not Billable', color: 'hsl(0 0% 92%)' },
 };
 
-function getActivityLabel(entry: { phaseId?: string; activityTypeId?: string; workAreaId?: string; workAreaActivityTypeId?: string }): string {
-  if (entry.phaseId) {
-    const phase = getPhaseById(entry.phaseId);
-    const activity = entry.activityTypeId ? getActivityTypeById(entry.activityTypeId) : undefined;
-    if (phase && activity) return `${phase.name} → ${activity.name}`;
-    if (phase) return phase.name;
-  }
-  if (entry.workAreaId) {
-    const wa = internalWorkAreas.find(w => w.id === entry.workAreaId);
-    const waPhase = wa ? getPhaseById(wa.phaseId) : undefined;
-    const activity = entry.workAreaActivityTypeId ? getActivityTypeById(entry.workAreaActivityTypeId) : undefined;
-    const areaName = waPhase?.name ?? wa?.name ?? 'Internal';
-    return activity ? `${areaName} → ${activity.name}` : areaName;
-  }
-  return 'Uncategorised';
-}
 
 function matchesCategory(projectId: string, category: CategoryFilter): boolean {
   if (category === 'all') return true;
@@ -108,83 +92,15 @@ const EmployeeInsights = () => {
     });
   }, [ownEntries, currentUser.id, rangeStartDate, rangeEndDate, category, projectFilter]);
 
-  // ── Aggregated summary ─────────────────────────────────────────────
-  const summary = useMemo(() => {
-    let totalMinutes = 0, billableMinutes = 0, maybeMinutes = 0, notBillableMinutes = 0;
-    for (const e of rangeEntries) {
-      const mins = toTotalMinutes(e.hours, e.minutes);
-      totalMinutes += mins;
-      if (e.billableStatus === 'billable') billableMinutes += mins;
-      else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
-      else notBillableMinutes += mins;
-    }
-    return { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes };
-  }, [rangeEntries, range, category, projectFilter]);
+  // ── Aggregated data (single-pass via shared hook) ───────────────────
+  const dashLabel = `Personal/${range}/${category}/${projectFilter}`;
+  const { totals: summary, topProjects, topActivities } = useDashboardData(rangeEntries, dashLabel);
 
   const expectedMinutes = getExpectedMinutes(range, days);
   const progressPct = expectedMinutes > 0 ? Math.round((summary.totalMinutes / expectedMinutes) * 100) : 0;
   const progressColor = getProgressColor(progressPct);
   const overtime = Math.max(0, summary.totalMinutes - expectedMinutes);
   const remaining = Math.max(0, expectedMinutes - summary.totalMinutes);
-
-  // ── Top Projects with Billable % ───────────────────────────────────
-  const topProjects = useMemo(() => {
-    const map: Record<string, { minutes: number; billableMinutes: number }> = {};
-    for (const e of rangeEntries) {
-      if (!map[e.projectId]) map[e.projectId] = { minutes: 0, billableMinutes: 0 };
-      const mins = toTotalMinutes(e.hours, e.minutes);
-      map[e.projectId].minutes += mins;
-      if (e.billableStatus === 'billable') map[e.projectId].billableMinutes += mins;
-    }
-    const sorted = Object.entries(map)
-      .map(([id, data]) => ({
-        id,
-        name: getProjectById(id)?.name ?? id,
-        minutes: data.minutes,
-        billableMinutes: data.billableMinutes,
-        billablePct: data.minutes > 0 ? Math.round((data.billableMinutes / data.minutes) * 100) : 0,
-      }))
-      .sort((a, b) => b.minutes - a.minutes);
-    if (sorted.length <= 5) return sorted;
-    const top5 = sorted.slice(0, 5);
-    const rest = sorted.slice(5);
-    const otherMins = rest.reduce((s, p) => s + p.minutes, 0);
-    const otherBillMins = rest.reduce((s, p) => s + p.billableMinutes, 0);
-    top5.push({ id: '__other__', name: 'Other', minutes: otherMins, billableMinutes: otherBillMins, billablePct: otherMins > 0 ? Math.round((otherBillMins / otherMins) * 100) : 0 });
-    return top5;
-  }, [rangeEntries]);
-
-  // ── Top Activities ─────────────────────────────────────────────────
-  const topActivities = useMemo(() => {
-    const map: Record<string, number> = {};
-    for (const e of rangeEntries) {
-      const label = getActivityLabel(e);
-      map[label] = (map[label] || 0) + toTotalMinutes(e.hours, e.minutes);
-    }
-    const all = Object.entries(map)
-      .map(([label, mins]) => ({ label, minutes: mins }))
-      .sort((a, b) => b.minutes - a.minutes);
-    if (all.length <= 8) return all;
-    const top8 = all.slice(0, 8);
-    const otherMins = all.slice(8).reduce((s, a) => s + a.minutes, 0);
-    if (otherMins > 0) top8.push({ label: 'Other', minutes: otherMins });
-    return top8;
-  }, [rangeEntries]);
-
-  // ── Cross-widget reconciliation ────────────────────────────────────
-  useMemo(() => {
-    const projSum = topProjects.reduce((s, p) => s + p.minutes, 0);
-    const actSum = topActivities.reduce((s, a) => s + a.minutes, 0);
-    reconcileDashboardTotals({
-      entries: rangeEntries,
-      kpiTotalMinutes: summary.totalMinutes,
-      kpiBillable: summary.billableMinutes,
-      kpiMaybe: summary.maybeMinutes,
-      kpiNotBillable: summary.notBillableMinutes,
-      teamRowsTotalMinutes: projSum,
-      label: `Personal/${range}/${category}/${projectFilter}/widgets(proj=${projSum},act=${actSum})`,
-    });
-  }, [topProjects, topActivities, rangeEntries, summary, range, category, projectFilter]);
 
   // ── 6-Week Trend (filter-aware) ────────────────────────────────────
   const chartData = useMemo(() => {
