@@ -204,6 +204,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          auth_user_id: string | null
           avatar_url: string | null
           created_at: string | null
           department_id: string | null
@@ -215,6 +216,7 @@ export type Database = {
           weekly_expected_hours: number
         }
         Insert: {
+          auth_user_id?: string | null
           avatar_url?: string | null
           created_at?: string | null
           department_id?: string | null
@@ -226,6 +228,7 @@ export type Database = {
           weekly_expected_hours?: number
         }
         Update: {
+          auth_user_id?: string | null
           avatar_url?: string | null
           created_at?: string | null
           department_id?: string | null
