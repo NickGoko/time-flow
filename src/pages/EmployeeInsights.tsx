@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Clock, TrendingUp, AlertCircle } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -9,9 +9,10 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { ChartContainer, ChartTooltip, ChartTooltipContent, type ChartConfig } from '@/components/ui/chart';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { toLocalDateString, parseLocalDate, getProjectById, getPhaseById, getActivityTypeById, internalWorkAreas } from '@/data/seed';
+import { toLocalDateString, parseLocalDate, getProjectById, getPhaseById, getActivityTypeById, internalWorkAreas, projects, getWeekStart } from '@/data/seed';
 import {
   formatHours,
   toTotalMinutes,
@@ -28,6 +29,20 @@ const RANGE_OPTIONS: { value: RangeOption; label: string }[] = [
   { value: 'this_quarter', label: 'This quarter' },
   { value: 'this_year', label: 'This year' },
 ];
+
+type CategoryFilter = 'all' | 'external' | 'internal';
+
+const CATEGORY_OPTIONS: { value: CategoryFilter; label: string }[] = [
+  { value: 'all', label: 'All' },
+  { value: 'external', label: 'External projects' },
+  { value: 'internal', label: 'Internal projects' },
+];
+
+const STATUS_CHART_CONFIG: ChartConfig = {
+  billable: { label: 'Billable', color: 'hsl(24 100% 55%)' },
+  maybe: { label: 'Maybe Billable', color: 'hsl(0 0% 46%)' },
+  notBillable: { label: 'Not Billable', color: 'hsl(0 0% 92%)' },
+};
 
 function getActivityLabel(entry: { phaseId?: string; activityTypeId?: string; workAreaId?: string; workAreaActivityTypeId?: string }): string {
   if (entry.phaseId) {
@@ -46,20 +61,52 @@ function getActivityLabel(entry: { phaseId?: string; activityTypeId?: string; wo
   return 'Uncategorised';
 }
 
+function matchesCategory(projectId: string, category: CategoryFilter): boolean {
+  if (category === 'all') return true;
+  const project = getProjectById(projectId);
+  if (!project) return true;
+  return category === 'external'
+    ? project.type === 'external_project'
+    : project.type === 'internal_department';
+}
+
 const EmployeeInsights = () => {
   const { currentUser } = useAuthenticatedUser();
-  const { getOwnEntries, getWeeklyTotals, getRecentDays } = useTimeEntries();
+  const { getOwnEntries, getRecentDays } = useTimeEntries();
   const [range, setRange] = useState<RangeOption>('this_week');
+  const [category, setCategory] = useState<CategoryFilter>('all');
+  const [projectFilter, setProjectFilter] = useState<string>('all');
+  const [trendView, setTrendView] = useState<'hours' | 'billing_mix'>('hours');
+
+  // Reset project filter when category changes
+  useEffect(() => { setProjectFilter('all'); }, [category]);
 
   const ownEntries = getOwnEntries();
   const { rangeStartDate, rangeEndDate, days } = useMemo(() => getDateWindow(range), [range]);
 
-  // ── Range-filtered entries ─────────────────────────────────────────
+  // ── Available projects for dropdown ────────────────────────────────
+  const availableProjects = useMemo(() => {
+    return projects.filter(p => {
+      if (!p.isActive) return false;
+      if (category === 'external') return p.type === 'external_project';
+      if (category === 'internal') return p.type === 'internal_department' && p.owningDepartmentId === currentUser.departmentId;
+      // 'all': show both external + user's internal
+      return p.type === 'external_project' || (p.type === 'internal_department' && p.owningDepartmentId === currentUser.departmentId);
+    });
+  }, [category, currentUser.departmentId]);
+
+  // ── Range + category + project filtered entries ────────────────────
   const rangeEntries = useMemo(() => {
     const startStr = toLocalDateString(rangeStartDate);
     const endStr = toLocalDateString(rangeEndDate);
-    return ownEntries.filter(e => e.userId === currentUser.id && e.date >= startStr && e.date <= endStr);
-  }, [ownEntries, currentUser.id, rangeStartDate, rangeEndDate]);
+    return ownEntries.filter(e => {
+      if (e.userId !== currentUser.id) return false;
+      if (e.date < startStr || e.date > endStr) return false;
+      if (!matchesCategory(e.projectId, category)) return false;
+      if (projectFilter !== 'all' && e.projectId !== projectFilter) return false;
+      return true;
+    });
+  }, [ownEntries, currentUser.id, rangeStartDate, rangeEndDate, category, projectFilter]);
 
   // ── Aggregated summary ─────────────────────────────────────────────
   const summary = useMemo(() => {
@@ -71,17 +118,16 @@ const EmployeeInsights = () => {
       else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
       else notBillableMinutes += mins;
     }
-    // Dev reconciliation via shared helper (runs in useMemo, logs in DEV_MODE)
     reconcileDashboardTotals({
       entries: rangeEntries,
       kpiTotalMinutes: totalMinutes,
       kpiBillable: billableMinutes,
       kpiMaybe: maybeMinutes,
       kpiNotBillable: notBillableMinutes,
-      label: `Personal/${range}`,
+      label: `Personal/${range}/${category}/${projectFilter}`,
     });
     return { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes };
-  }, [rangeEntries]);
+  }, [rangeEntries, range, category, projectFilter]);
 
   const expectedMinutes = getExpectedMinutes(range, days);
   const progressPct = expectedMinutes > 0 ? Math.round((summary.totalMinutes / expectedMinutes) * 100) : 0;
@@ -89,19 +135,29 @@ const EmployeeInsights = () => {
   const overtime = Math.max(0, summary.totalMinutes - expectedMinutes);
   const remaining = Math.max(0, expectedMinutes - summary.totalMinutes);
 
-  // ── Top Projects ───────────────────────────────────────────────────
+  // ── Top Projects with Billable % ───────────────────────────────────
   const topProjects = useMemo(() => {
-    const map: Record<string, number> = {};
+    const map: Record<string, { minutes: number; billableMinutes: number }> = {};
     for (const e of rangeEntries) {
-      map[e.projectId] = (map[e.projectId] || 0) + toTotalMinutes(e.hours, e.minutes);
+      if (!map[e.projectId]) map[e.projectId] = { minutes: 0, billableMinutes: 0 };
+      const mins = toTotalMinutes(e.hours, e.minutes);
+      map[e.projectId].minutes += mins;
+      if (e.billableStatus === 'billable') map[e.projectId].billableMinutes += mins;
     }
     const sorted = Object.entries(map)
-      .map(([id, mins]) => ({ id, name: getProjectById(id)?.name ?? id, minutes: mins }))
+      .map(([id, data]) => ({
+        id,
+        name: getProjectById(id)?.name ?? id,
+        minutes: data.minutes,
+        billablePct: data.minutes > 0 ? Math.round((data.billableMinutes / data.minutes) * 100) : 0,
+      }))
       .sort((a, b) => b.minutes - a.minutes);
     if (sorted.length <= 5) return sorted;
     const top5 = sorted.slice(0, 5);
-    const otherMins = sorted.slice(5).reduce((s, p) => s + p.minutes, 0);
-    top5.push({ id: '__other__', name: 'Other', minutes: otherMins });
+    const rest = sorted.slice(5);
+    const otherMins = rest.reduce((s, p) => s + p.minutes, 0);
+    const otherBillMins = rest.reduce((s, p) => s + Math.round(p.minutes * p.billablePct / 100), 0);
+    top5.push({ id: '__other__', name: 'Other', minutes: otherMins, billablePct: otherMins > 0 ? Math.round((otherBillMins / otherMins) * 100) : 0 });
     return top5;
   }, [rangeEntries]);
 
@@ -118,21 +174,55 @@ const EmployeeInsights = () => {
       .slice(0, 8);
   }, [rangeEntries]);
 
-  // ── 6-Week Trend (unchanged) ───────────────────────────────────────
-  const [showBillablePercent, setShowBillablePercent] = useState(false);
-  const weeklyTotals = getWeeklyTotals(currentUser.id, 6);
+  // ── 6-Week Trend (filter-aware) ────────────────────────────────────
+  const chartData = useMemo(() => {
+    // Get 6 week boundaries
+    const now = new Date();
+    const weeks: { start: string; end: string; label: string }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i * 7);
+      const ws = getWeekStart(d);
+      const startDate = parseLocalDate(ws);
+      const endDate = new Date(startDate);
+      endDate.setDate(endDate.getDate() + 6);
+      const label = startDate.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+      weeks.push({ start: ws, end: toLocalDateString(endDate), label });
+    }
 
-  const chartConfig: ChartConfig = {
+    // Filter all own entries by category + project, then bucket by week
+    const filtered = ownEntries.filter(e => {
+      if (e.userId !== currentUser.id) return false;
+      if (!matchesCategory(e.projectId, category)) return false;
+      if (projectFilter !== 'all' && e.projectId !== projectFilter) return false;
+      return true;
+    });
+
+    return weeks.map(w => {
+      let totalMinutes = 0, billableMinutes = 0, maybeMinutes = 0, notBillableMinutes = 0;
+      for (const e of filtered) {
+        if (e.date >= w.start && e.date <= w.end) {
+          const mins = toTotalMinutes(e.hours, e.minutes);
+          totalMinutes += mins;
+          if (e.billableStatus === 'billable') billableMinutes += mins;
+          else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
+          else notBillableMinutes += mins;
+        }
+      }
+      return {
+        week: w.label,
+        hours: +(totalMinutes / 60).toFixed(1),
+        billablePercent: totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0,
+        billable: +(billableMinutes / 60).toFixed(1),
+        maybe: +(maybeMinutes / 60).toFixed(1),
+        notBillable: +(notBillableMinutes / 60).toFixed(1),
+      };
+    });
+  }, [ownEntries, currentUser.id, category, projectFilter]);
+
+  const hoursChartConfig: ChartConfig = {
     hours: { label: 'Hours', color: 'hsl(var(--primary))' },
-    billablePercent: { label: 'Billable %', color: 'hsl(var(--primary))' },
   };
-
-  const chartData = weeklyTotals.map(w => {
-    const d = parseLocalDate(w.weekStart);
-    const label = d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
-    const billPct = w.totalMinutes > 0 ? Math.round((w.billableMinutes / w.totalMinutes) * 100) : 0;
-    return { week: label, hours: +(w.totalMinutes / 60).toFixed(1), billablePercent: billPct };
-  });
 
   // ── Recent History (unchanged) ─────────────────────────────────────
   const recentDays = getRecentDays(currentUser.id, 28);
@@ -165,6 +255,34 @@ const EmployeeInsights = () => {
               {opt.label}
             </Button>
           ))}
+        </div>
+
+        {/* Category chips + Project dropdown */}
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap gap-2">
+            {CATEGORY_OPTIONS.map(opt => (
+              <Button
+                key={opt.value}
+                variant={category === opt.value ? 'default' : 'outline'}
+                size="sm"
+                className="h-8 text-xs"
+                onClick={() => setCategory(opt.value)}
+              >
+                {opt.label}
+              </Button>
+            ))}
+          </div>
+          <Select value={projectFilter} onValueChange={setProjectFilter}>
+            <SelectTrigger className="w-[200px] h-8 text-xs">
+              <SelectValue placeholder="All projects" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All projects</SelectItem>
+              {availableProjects.map(p => (
+                <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
         {/* Summary card */}
@@ -220,16 +338,22 @@ const EmployeeInsights = () => {
                       <TableHead className="h-8 text-xs">Project</TableHead>
                       <TableHead className="h-8 text-xs text-right">Hours</TableHead>
                       <TableHead className="h-8 text-xs text-right">%</TableHead>
+                      <TableHead className="h-8 text-xs text-right">Billable %</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {topProjects.map(p => (
-                      <TableRow key={p.id}>
+                      <TableRow
+                        key={p.id}
+                        className={cn(p.id !== '__other__' && 'cursor-pointer', projectFilter === p.id && 'bg-muted')}
+                        onClick={() => { if (p.id !== '__other__') setProjectFilter(p.id); }}
+                      >
                         <TableCell className="py-1.5 text-sm">{p.name}</TableCell>
                         <TableCell className="py-1.5 text-sm text-right tabular-nums">{formatHours(p.minutes)}h</TableCell>
                         <TableCell className="py-1.5 text-sm text-right tabular-nums">
                           {summary.totalMinutes > 0 ? Math.round((p.minutes / summary.totalMinutes) * 100) : 0}%
                         </TableCell>
+                        <TableCell className="py-1.5 text-sm text-right tabular-nums">{p.billablePct}%</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -279,26 +403,36 @@ const EmployeeInsights = () => {
                 variant="ghost"
                 size="sm"
                 className="text-xs h-7"
-                onClick={() => setShowBillablePercent(p => !p)}
+                onClick={() => setTrendView(v => v === 'hours' ? 'billing_mix' : 'hours')}
               >
-                {showBillablePercent ? 'Show hours' : 'Show billable %'}
+                {trendView === 'hours' ? 'Show billing mix' : 'Show hours'}
               </Button>
             </div>
           </CardHeader>
           <CardContent>
-            <ChartContainer config={chartConfig} className="aspect-[2/1] w-full">
-              <BarChart data={chartData}>
-                <CartesianGrid vertical={false} strokeDasharray="3 3" />
-                <XAxis dataKey="week" tickLine={false} axisLine={false} className="text-xs" />
-                <YAxis tickLine={false} axisLine={false} className="text-xs" />
-                <ChartTooltip content={<ChartTooltipContent />} />
-                <Bar
-                  dataKey={showBillablePercent ? 'billablePercent' : 'hours'}
-                  fill="hsl(var(--primary))"
-                  radius={[4, 4, 0, 0]}
-                />
-              </BarChart>
-            </ChartContainer>
+            {trendView === 'hours' ? (
+              <ChartContainer config={hoursChartConfig} className="aspect-[2/1] w-full">
+                <BarChart data={chartData}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="week" tickLine={false} axisLine={false} className="text-xs" />
+                  <YAxis tickLine={false} axisLine={false} className="text-xs" />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="hours" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <ChartContainer config={STATUS_CHART_CONFIG} className="aspect-[2/1] w-full">
+                <BarChart data={chartData}>
+                  <CartesianGrid vertical={false} strokeDasharray="3 3" />
+                  <XAxis dataKey="week" tickLine={false} axisLine={false} className="text-xs" />
+                  <YAxis tickLine={false} axisLine={false} className="text-xs" />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="billable" stackId="a" fill="hsl(24 100% 55%)" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="maybe" stackId="a" fill="hsl(0 0% 46%)" radius={[0, 0, 0, 0]} />
+                  <Bar dataKey="notBillable" stackId="a" fill="hsl(0 0% 92%)" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            )}
           </CardContent>
         </Card>
 
