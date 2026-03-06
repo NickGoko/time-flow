@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -8,123 +8,38 @@ import { MetricCards } from '@/components/admin/MetricCards';
 import { WeeklyChart } from '@/components/admin/WeeklyChart';
 import { CohortWidget } from '@/components/admin/CohortWidget';
 import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
-import { useTimeEntries } from '@/contexts/TimeEntriesContext';
-import { useAuthenticatedUser } from '@/contexts/UserContext';
-import { deriveMetrics, deriveOperationalInsights } from '@/data/reportsMockData';
-import { getWeekStart, parseLocalDate } from '@/data/seed';
-import { departments } from '@/data/seed';
+import { useDashboardDataset, RangeOption, ScopeOption } from '@/hooks/useDashboardDataset';
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 
-type RangeOption = 'this_week' | 'last_week' | 'this_month' | 'today' | 'this_quarter' | 'this_year';
-type ScopeOption = 'my' | 'department' | 'org';
-
 export default function AdminReportsOverview() {
-  const { getAllEntries, weekStatuses, validationEvents } = useTimeEntries();
-  const entries = getAllEntries();
-  const { currentUser, allUsers, appRole } = useAuthenticatedUser();
   const [range, setRange] = useState<RangeOption>('this_week');
 
-  // RBAC: determine available scopes
-  const canViewDepartment = ['hod', 'leadership', 'admin', 'super_admin'].includes(appRole ?? '');
-  const canViewOrg = ['leadership', 'admin', 'super_admin'].includes(appRole ?? '');
+  // Determine default scope based on role (need canViewOrg/canViewDepartment before hook, but hook needs scope)
+  // We'll initialise scope then pass it in
+  const [scope, setScope] = useState<ScopeOption>('org');
+  const [selectedDeptId, setSelectedDeptId] = useState<string>('');
 
-  const defaultScope: ScopeOption = canViewOrg ? 'org' : canViewDepartment ? 'department' : 'my';
-  const [scope, setScope] = useState<ScopeOption>(defaultScope);
+  const {
+    scopedEntries, scopedUsers, scopedWeekStatuses,
+    weekStart, days,
+    metrics, insights, blockedByCapCount,
+    availableDepartments, canViewDepartment, canViewOrg,
+  } = useDashboardDataset(scope, selectedDeptId, range);
 
-  // Department selector for department scope
-  const availableDepartments = useMemo(() => {
-    if (appRole === 'hod') {
-      const managed = currentUser.managedDepartments ?? [];
-      return departments.filter(d => d.isActive && managed.includes(d.id));
-    }
-    if (canViewOrg || canViewDepartment) {
-      return departments.filter(d => d.isActive);
-    }
-    return [];
-  }, [appRole, currentUser.managedDepartments, canViewOrg, canViewDepartment]);
+  // Set default dept if not yet set
+  if (!selectedDeptId && availableDepartments.length > 0) {
+    setSelectedDeptId(availableDepartments[0].id);
+  }
 
-  const [selectedDeptId, setSelectedDeptId] = useState<string>(
-    availableDepartments.length > 0 ? availableDepartments[0].id : '',
-  );
-
-  // Scoped filtering
-  const scopedUsers = useMemo(() => {
-    if (scope === 'my') return allUsers.filter(u => u.id === currentUser.id);
-    if (scope === 'department') return allUsers.filter(u => u.departmentId === selectedDeptId);
-    return allUsers;
-  }, [scope, allUsers, currentUser.id, selectedDeptId]);
-
-  const scopedEntries = useMemo(() => {
-    const scopedUserIds = new Set(scopedUsers.map(u => u.id));
-    return entries.filter(e => scopedUserIds.has(e.userId));
-  }, [entries, scopedUsers]);
-
-  const scopedWeekStatuses = useMemo(() => {
-    const scopedUserIds = new Set(scopedUsers.map(u => u.id));
-    return weekStatuses.filter(ws => scopedUserIds.has(ws.userId));
-  }, [weekStatuses, scopedUsers]);
-
-  const { weekStart, days, rangeStartDate, rangeEndDate } = useMemo(() => {
-    const now = new Date();
-    if (range === 'this_week') {
-      const ws = getWeekStart(now);
-      const start = parseLocalDate(ws);
-      const end = new Date(start); end.setDate(end.getDate() + 6);
-      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
-    }
-    if (range === 'last_week') {
-      const d = new Date(now); d.setDate(d.getDate() - 7);
-      const ws = getWeekStart(d);
-      const start = parseLocalDate(ws);
-      const end = new Date(start); end.setDate(end.getDate() + 6);
-      return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
-    }
-    if (range === 'today') {
-      const todayStr = now.toISOString().slice(0, 10);
-      const ws = getWeekStart(now);
-      const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0
-      return { weekStart: ws, days: dayOfWeek + 1, rangeStartDate: now, rangeEndDate: now };
-    }
-    if (range === 'this_quarter') {
-      const qMonth = Math.floor(now.getMonth() / 3) * 3;
-      const first = new Date(now.getFullYear(), qMonth, 1);
-      const ws = getWeekStart(first);
-      const start = parseLocalDate(ws);
-      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      return { weekStart: ws, days: Math.min(totalDays, 100), rangeStartDate: start, rangeEndDate: now };
-    }
-    if (range === 'this_year') {
-      const first = new Date(now.getFullYear(), 0, 1);
-      const ws = getWeekStart(first);
-      const start = parseLocalDate(ws);
-      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
-      return { weekStart: ws, days: Math.min(totalDays, 366), rangeStartDate: start, rangeEndDate: now };
-    }
-    const first = new Date(now.getFullYear(), now.getMonth(), 1);
-    const dayCount = now.getDate();
-    const ws = getWeekStart(first);
-    const start = parseLocalDate(ws);
-    const totalDays = Math.min(dayCount + (first.getDay() === 0 ? 6 : first.getDay() - 1), 35);
-    const end = new Date(start); end.setDate(end.getDate() + totalDays - 1);
-    return { weekStart: ws, days: totalDays, rangeStartDate: start, rangeEndDate: end };
-  }, [range]);
-
-  const metrics = useMemo(() => deriveMetrics(scopedEntries, weekStart, days), [scopedEntries, weekStart, days]);
-  const insights = useMemo(
-    () => deriveOperationalInsights(scopedEntries, weekStart, days, scopedUsers, scopedWeekStatuses),
-    [scopedEntries, weekStart, days, scopedUsers, scopedWeekStatuses],
-  );
-
-  const blockedByCapCount = useMemo(() => {
-    const scopedUserIds = new Set(scopedUsers.map(u => u.id));
-    return validationEvents.filter(ve => {
-      if (ve.eventType !== 'cap_blocked') return false;
-      if (!scopedUserIds.has(ve.userId)) return false;
-      const d = parseLocalDate(ve.entryDate);
-      return d >= rangeStartDate && d <= rangeEndDate;
-    }).length;
-  }, [validationEvents, scopedUsers, rangeStartDate, rangeEndDate]);
+  // Correct scope if user doesn't have permission
+  if (scope === 'org' && !canViewOrg && canViewDepartment) {
+    setScope('department');
+  } else if (scope === 'org' && !canViewOrg && !canViewDepartment) {
+    setScope('my');
+  } else if (scope === 'department' && !canViewDepartment) {
+    setScope('my');
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -233,17 +148,16 @@ export default function AdminReportsOverview() {
 
           <WeeklyChart range={range} entries={scopedEntries} users={scopedUsers} />
 
-          {scope !== 'my' && (
-            <TeamSummaryTable
-              weekStart={weekStart}
-              days={days}
-              entries={scopedEntries}
-              users={scopedUsers}
-              weekStatuses={scopedWeekStatuses}
-            />
-          )}
+          <TeamSummaryTable
+            weekStart={weekStart}
+            days={days}
+            range={range}
+            entries={scopedEntries}
+            users={scopedUsers}
+            weekStatuses={scopedWeekStatuses}
+          />
 
-          <CohortWidget entries={scopedEntries} users={scopedUsers} />
+          <CohortWidget entries={scopedEntries} users={scopedUsers} weekStart={weekStart} days={days} />
         </div>
       </main>
     </div>

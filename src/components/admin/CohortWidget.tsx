@@ -2,7 +2,6 @@ import { Card } from '@/components/ui/card';
 import { deriveCohortSummaries, buildCohortBuckets } from '@/data/reportsMockData';
 import { useTimeEntries } from '@/contexts/TimeEntriesContext';
 import { useAuthenticatedUser } from '@/contexts/UserContext';
-import { getWeekStart } from '@/data/seed';
 import { useMemo } from 'react';
 import { TimeEntry, User } from '@/types';
 
@@ -11,19 +10,22 @@ const MIN_USERS_FOR_COHORT = 5;
 interface Props {
   entries?: TimeEntry[];
   users?: User[];
+  weekStart?: string;
+  days?: number;
 }
 
-export function CohortWidget({ entries: entriesProp, users: usersProp }: Props) {
+export function CohortWidget({ entries: entriesProp, users: usersProp, weekStart: weekStartProp, days: daysProp }: Props) {
   const { getAllEntries } = useTimeEntries();
   const { allUsers: contextUsers } = useAuthenticatedUser();
 
   const entries = entriesProp ?? getAllEntries();
   const allUsers = usersProp ?? contextUsers;
-  const weekStart = useMemo(() => getWeekStart(), []);
+  const weekStart = weekStartProp ?? '';
+  const days = daysProp ?? 7;
 
   const summaries = useMemo(
-    () => deriveCohortSummaries(entries, allUsers, weekStart),
-    [entries, allUsers, weekStart],
+    () => weekStart ? deriveCohortSummaries(entries, allUsers, weekStart, days) : [],
+    [entries, allUsers, weekStart, days],
   );
   const buckets = useMemo(() => buildCohortBuckets(summaries), [summaries]);
 
@@ -43,7 +45,7 @@ export function CohortWidget({ entries: entriesProp, users: usersProp }: Props) 
     <Card className="border-border bg-card rounded-lg p-4">
       <div className="mb-1 flex items-center justify-between">
         <h3 className="text-sm font-medium">Cohort Distribution</h3>
-        <span className="text-xs text-muted-foreground">{allUsers.length} users · current week</span>
+        <span className="text-xs text-muted-foreground">{allUsers.length} users · {days === 1 ? 'today' : `${days} days`}</span>
       </div>
 
       <div className="mt-3 space-y-3">

@@ -227,10 +227,11 @@ export function deriveTeamSummary(
   days: number,
   allUsers: User[],
   weekStatuses: WeekStatus[],
+  expectedMinutesPerUser?: number,
 ): TeamMemberSummary[] {
   const dates = Array.from({ length: days }, (_, i) => getWeekDate(weekStart, i));
   const filtered = entries.filter(e => dates.includes(e.date));
-  const expectedMinutes = WEEKLY_EXPECTED_HOURS * 60;
+  const expectedMinutes = expectedMinutesPerUser ?? WEEKLY_EXPECTED_HOURS * 60;
 
   return allUsers
     .map(user => {

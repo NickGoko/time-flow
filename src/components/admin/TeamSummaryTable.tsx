@@ -12,6 +12,7 @@ import { Check, Minus, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide-react';
 import { deriveTeamSummary } from '@/data/reportsMockData';
 import { formatDuration, TimeEntry, User, WeekStatus } from '@/types';
 import { TeamMemberSummary } from '@/types/reports';
+import { RangeOption, getExpectedMinutes } from '@/hooks/useDashboardDataset';
 
 type SortKey = 'userName' | 'totalMinutes' | 'compliancePercent' | 'billablePercent' | 'maybeBillableMinutes' | 'weekSubmitted';
 type SortDir = 'asc' | 'desc';
@@ -19,18 +20,21 @@ type SortDir = 'asc' | 'desc';
 interface Props {
   weekStart: string;
   days: number;
+  range: RangeOption;
   entries: TimeEntry[];
   users: User[];
   weekStatuses: WeekStatus[];
 }
 
-export function TeamSummaryTable({ weekStart, days, entries, users, weekStatuses }: Props) {
+export function TeamSummaryTable({ weekStart, days, range, entries, users, weekStatuses }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>('totalMinutes');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
+  const expectedMinutes = useMemo(() => getExpectedMinutes(range, days), [range, days]);
+
   const rows = useMemo(
-    () => deriveTeamSummary(entries, weekStart, days, users, weekStatuses),
-    [entries, weekStart, days, users, weekStatuses],
+    () => deriveTeamSummary(entries, weekStart, days, users, weekStatuses, expectedMinutes),
+    [entries, weekStart, days, users, weekStatuses, expectedMinutes],
   );
 
   const sortedRows = useMemo(() => {
@@ -60,9 +64,13 @@ export function TeamSummaryTable({ weekStart, days, entries, users, weekStatuses
       : <ArrowDown className="inline-block ml-1 h-3 w-3" />;
   };
 
+  const isMySummary = users.length === 1;
+
   return (
     <Card className="border-border bg-card rounded-lg p-4">
-      <h3 className="text-sm font-medium text-muted-foreground mb-3">Team Summary</h3>
+      <h3 className="text-sm font-medium text-muted-foreground mb-3">
+        {isMySummary ? 'My summary' : 'Team Summary'}
+      </h3>
       <Table>
         <TableHeader>
           <TableRow>
