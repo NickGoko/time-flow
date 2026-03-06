@@ -28,16 +28,22 @@ interface UserContextType {
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
 
-async function fetchUserProfile(userId: string): Promise<User | null> {
-  const [profileRes, roleRes] = await Promise.all([
-    supabase.from('profiles').select('*').eq('id', userId).single(),
-    supabase.from('user_roles').select('role').eq('user_id', userId).single(),
-  ]);
+/**
+ * Fetch a user profile.
+ * @param userId - either a profile.id (demo mode) or an auth user id (auth mode)
+ * @param byAuthId - when true, look up by auth_user_id column instead of id
+ */
+async function fetchUserProfile(userId: string, byAuthId = false): Promise<User | null> {
+  const col = byAuthId ? 'auth_user_id' : 'id';
+  const profileRes = await supabase.from('profiles').select('*').eq(col, userId).single();
 
   if (profileRes.error || !profileRes.data) return null;
 
   const profile = profileRes.data;
-  const appRole: AppRole = (roleRes.data?.role as AppRole) ?? 'employee';
+
+  // Always look up role by profile.id (not auth_user_id)
+  const { data: roleData } = await supabase.from('user_roles').select('role').eq('user_id', profile.id).single();
+  const appRole: AppRole = (roleData?.role as AppRole) ?? 'employee';
 
   return {
     id: profile.id,
@@ -49,6 +55,7 @@ async function fetchUserProfile(userId: string): Promise<User | null> {
     weeklyExpectedHours: profile.weekly_expected_hours,
     isActive: profile.is_active,
     avatarUrl: profile.avatar_url ?? undefined,
+    authUserId: (profile as any).auth_user_id ?? undefined,
   };
 }
 
@@ -86,6 +93,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       weeklyExpectedHours: p.weekly_expected_hours,
       isActive: p.is_active,
       avatarUrl: p.avatar_url ?? undefined,
+      authUserId: (p as any).auth_user_id ?? undefined,
       managedDepartments: scopeMap.get(p.id),
     }));
 
@@ -119,7 +127,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const user = await fetchUserProfile(session.user.id);
+    // Auth session user.id is the auth UUID; look up profile by auth_user_id
+    const user = await fetchUserProfile(session.user.id, true);
     setCurrentUserState(user);
     setIsLoading(false);
 
@@ -223,7 +232,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (AUTH_ENABLED) {
         const session = (await supabase.auth.getSession()).data.session;
         if (session) {
-          const refreshed = await fetchUserProfile(session.user.id);
+          const refreshed = await fetchUserProfile(session.user.id, true);
           if (refreshed) setCurrentUserState(refreshed);
         }
       } else {

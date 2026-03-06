@@ -88,17 +88,22 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: inviteError.message }, 400);
       }
 
-      const userId = inviteData.user.id;
+      const authUserId = inviteData.user.id;
 
-      // Wait for handle_new_user trigger to create the profile row
+      // Wait for handle_new_user trigger to link the profile via auth_user_id
+      let profileId: string | null = null;
       for (let attempt = 0; attempt < 10; attempt++) {
         const { data: exists } = await adminClient
           .from('profiles')
           .select('id')
-          .eq('id', userId)
+          .eq('auth_user_id', authUserId)
           .maybeSingle();
-        if (exists) break;
+        if (exists) { profileId = exists.id; break; }
         await new Promise(r => setTimeout(r, 300));
+      }
+
+      if (!profileId) {
+        return jsonResponse({ error: 'Profile was not created by trigger' }, 500);
       }
 
       // Update profile with additional fields
@@ -109,7 +114,7 @@ Deno.serve(async (req) => {
       if (weeklyExpectedHours !== undefined) profileUpdates.weekly_expected_hours = weeklyExpectedHours;
 
       if (Object.keys(profileUpdates).length > 0) {
-        const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', userId);
+        const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', profileId);
         if (updateErr) {
           return jsonResponse({ error: 'Profile update failed: ' + updateErr.message }, 400);
         }
@@ -117,10 +122,10 @@ Deno.serve(async (req) => {
 
       // If appRole is admin, update user_roles
       if (appRole === 'admin') {
-        await adminClient.from('user_roles').update({ role: 'admin' }).eq('user_id', userId);
+        await adminClient.from('user_roles').update({ role: 'admin' }).eq('user_id', profileId);
       }
 
-      return jsonResponse({ success: true, userId });
+      return jsonResponse({ success: true, userId: profileId });
     }
 
     // ── Action: update ───────────────────────────────────────────
@@ -362,18 +367,11 @@ Deno.serve(async (req) => {
       );
 
       if (existingAuthUser) {
-        // Sync profile.id if it differs
-        if (existingAuthUser.id !== profile.id) {
-          await adminClient
-            .from('profiles')
-            .update({ id: existingAuthUser.id })
-            .eq('id', profile.id);
-          // Also update user_roles
-          await adminClient
-            .from('user_roles')
-            .update({ user_id: existingAuthUser.id })
-            .eq('user_id', profile.id);
-        }
+        // Link auth_user_id if not already set
+        await adminClient
+          .from('profiles')
+          .update({ auth_user_id: existingAuthUser.id })
+          .eq('id', profile.id);
 
         // Re-send via magiclink (invite type fails if user already exists)
         const { error: linkErr } = await adminClient.auth.admin.generateLink({
@@ -389,18 +387,12 @@ Deno.serve(async (req) => {
         );
         if (inviteErr) return jsonResponse({ error: inviteErr.message }, 400);
 
-        // Sync profile.id to match the new auth user id
+        // Link auth_user_id (trigger may have already done this, but ensure it)
         const newAuthId = inviteData.user.id;
-        if (newAuthId !== profile.id) {
-          await adminClient
-            .from('profiles')
-            .update({ id: newAuthId })
-            .eq('id', profile.id);
-          await adminClient
-            .from('user_roles')
-            .update({ user_id: newAuthId })
-            .eq('user_id', profile.id);
-        }
+        await adminClient
+          .from('profiles')
+          .update({ auth_user_id: newAuthId })
+          .eq('id', profile.id);
       }
 
       return jsonResponse({ success: true });
@@ -479,18 +471,12 @@ Deno.serve(async (req) => {
 
       if (createErr) return jsonResponse({ error: createErr.message }, 400);
 
-      // Sync profile.id
+      // Link auth_user_id (trigger may have already done this, but ensure it)
       const newAuthId = createData.user.id;
-      if (newAuthId !== profile.id) {
-        await adminClient
-          .from('profiles')
-          .update({ id: newAuthId })
-          .eq('id', profile.id);
-        await adminClient
-          .from('user_roles')
-          .update({ user_id: newAuthId })
-          .eq('user_id', profile.id);
-      }
+      await adminClient
+        .from('profiles')
+        .update({ auth_user_id: newAuthId })
+        .eq('id', profile.id);
 
       return jsonResponse({ success: true });
     }
@@ -528,11 +514,8 @@ Deno.serve(async (req) => {
           const existingAuth = authUsersByEmail.get(emailLower);
 
           if (existingAuth) {
-            // Sync profile.id if needed
-            if (existingAuth.id !== profile.id) {
-              await adminClient.from('profiles').update({ id: existingAuth.id }).eq('id', profile.id);
-              await adminClient.from('user_roles').update({ user_id: existingAuth.id }).eq('user_id', profile.id);
-            }
+            // Link auth_user_id
+            await adminClient.from('profiles').update({ auth_user_id: existingAuth.id }).eq('id', profile.id);
             // Re-invite
             const { error: linkErr } = await adminClient.auth.admin.generateLink({
               type: 'invite',
@@ -554,10 +537,8 @@ Deno.serve(async (req) => {
               continue;
             }
             const newAuthId = inviteData.user.id;
-            if (newAuthId !== profile.id) {
-              await adminClient.from('profiles').update({ id: newAuthId }).eq('id', profile.id);
-              await adminClient.from('user_roles').update({ user_id: newAuthId }).eq('user_id', profile.id);
-            }
+            // Link auth_user_id (trigger may have already done this)
+            await adminClient.from('profiles').update({ auth_user_id: newAuthId }).eq('id', profile.id);
             // Add to map for subsequent lookups
             authUsersByEmail.set(emailLower, { id: newAuthId });
             results.push({ userId: uid, email: profile.email, status: 'invited' });

@@ -1,98 +1,93 @@
 
 
-# Slice 1: Add `profiles.auth_user_id` and Stop Mutating PKs
+# Correctness Audit + Shared `getDashboardData` Module
 
-## Problem
+## Part 1: Current Architecture Map
 
-When auth provisioning occurs, the `handle_new_user` trigger and the `admin-users` Edge Function both rewrite `profiles.id` to match `auth.users.id`. This orphans `time_entries`, `week_statuses`, and `validation_events` rows that reference the old UUID.
+### Files where KPIs/charts/tables are calculated
 
-## Solution
+| File | What it computes | Data source |
+|---|---|---|
+| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
+| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
+| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
+| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
+| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
+| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
+| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
+| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
+| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
+| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
 
-Add a nullable `auth_user_id` column to `profiles`. Use it as the link between `profiles` and `auth.users`. Stop mutating `profiles.id` or `user_roles.user_id` anywhere.
+### Supabase queries executed
 
-## Files to Touch (4)
+Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
 
-1. **Migration SQL** (new file in `supabase/migrations/`)
-2. **`supabase/functions/admin-users/index.ts`** — update provision-invite, create-with-password, bulk-provision to set `auth_user_id` instead of rewriting `profiles.id`
-3. **`src/contexts/UserContext.tsx`** — update `fetchUserProfile` to look up profile by `auth_user_id` when authenticated (session user id = auth user id, not profile id)
-4. **`src/types/index.ts`** — add optional `authUserId` field to `User` type
+The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
 
-## Migration SQL
+### Where billable/maybe/not billable totals are computed — drift sources
 
-```sql
--- 1. Add auth_user_id column
-ALTER TABLE public.profiles
-  ADD COLUMN auth_user_id uuid UNIQUE;
+**EmployeeInsights.tsx** computes totals **3 independent times**:
 
--- 2. Backfill: for any profile whose id already matches an auth user, set auth_user_id = id
-UPDATE public.profiles SET auth_user_id = id
-WHERE id IN (SELECT id FROM auth.users);
+1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
+2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
+3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
 
--- 3. Replace handle_new_user trigger function
-CREATE OR REPLACE FUNCTION public.handle_new_user()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-BEGIN
-  -- If profile exists by email, link it; otherwise create new
-  UPDATE public.profiles
-    SET auth_user_id = NEW.id
-    WHERE email = NEW.email AND auth_user_id IS NULL;
+**AdminReportsOverview.tsx** has **2 independent computation paths**:
 
-  IF NOT FOUND THEN
-    INSERT INTO public.profiles (id, email, name, auth_user_id)
-    VALUES (gen_random_uuid(), NEW.email,
-            COALESCE(NEW.raw_user_meta_data->>'full_name', ''),
-            NEW.id)
-    ON CONFLICT (email) DO UPDATE SET auth_user_id = NEW.id;
-  END IF;
+1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
+2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
+3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
 
-  -- Ensure employee role exists (keyed to profile.id, not auth id)
-  INSERT INTO public.user_roles (user_id, role)
-  SELECT p.id, 'employee'
-  FROM public.profiles p
-  WHERE p.auth_user_id = NEW.id
-  ON CONFLICT (user_id) DO NOTHING;
+**Identified drift sources:**
+- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
+- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
+- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
+- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
 
-  RETURN NEW;
-END;
-$$;
+## Part 2: Recommended Shared Module
+
+### Approach: `useDashboardData(params)` hook
+
+Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
+
+```text
+src/hooks/useDashboardData.ts  (NEW — ~80 lines)
+
+Input:
+  entries: TimeEntry[]           // already scoped/filtered by caller
+  range: RangeOption
+  users?: User[]                 // for team/dept breakdowns
+  weekStatuses?: WeekStatus[]    // for submission status
+
+Output:
+  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
+  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
+  topActivities: { label, minutes }[]
+  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
+  teamSummary: TeamMemberSummary[]  (if users provided)
+  reconcileResult: ReconcileResult
 ```
 
-## Edge Function Changes (`admin-users/index.ts`)
+### Key design decisions:
+- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
+- **One pass** for totals + project + activity aggregation (single loop over entries).
+- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
+- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
 
-For actions **provision-invite**, **create-with-password**, and **bulk-provision**, replace all instances of:
-```
-await adminClient.from('profiles').update({ id: newAuthId }).eq('id', profile.id);
-await adminClient.from('user_roles').update({ user_id: newAuthId }).eq('user_id', profile.id);
-```
-with:
-```
-await adminClient.from('profiles').update({ auth_user_id: newAuthId }).eq('id', profile.id);
-```
+### Files to change:
+1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
+2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
+3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
 
-No PK or `user_roles.user_id` mutation. The `create` action (invite new user) also needs adjustment: after the trigger fires, look up the profile by `auth_user_id` instead of by `id`.
+### What NOT to change:
+- `useDashboardDataset.ts` — keep as-is for scope/user filtering
+- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
+- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
+- No new routes or pages
 
-## UserContext Changes
-
-`fetchUserProfile(userId)` currently queries `profiles` by `id`. When `AUTH_ENABLED`, the session user id is an auth UUID. After this change, it must query by `auth_user_id`:
-
-```typescript
-// When called from auth session:
-supabase.from('profiles').select('*').eq('auth_user_id', userId).single()
-// Then use profile.id (not auth_user_id) for user_roles lookup
-```
-
-When `AUTH_ENABLED=false` (demo mode), continue using `profiles.id` directly — no change.
-
-## What Does NOT Change
-
-- `time_entries`, `week_statuses`, `validation_events` — untouched
-- Dashboard/insights pages — untouched
-- `AUTH_ENABLED` stays `false`, demo mode stays on
-- UI styling — untouched
-- `SignIn.tsx` — untouched
-- Routing/guards — untouched
+### Implementation order:
+1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
+2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
+3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
 
