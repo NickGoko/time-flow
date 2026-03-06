@@ -21,7 +21,31 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
     });
     const { data: { user }, error } = await callerClient.auth.getUser();
     if (!error && user) {
-      return { callerId: user.id };
+      const authId = user.id;
+      // Map auth user → roster profile ID
+      // Try auth_user_id first, then fallback to id (legacy rewritten users)
+      const { data: profile } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('auth_user_id', authId)
+        .maybeSingle();
+
+      if (profile) {
+        return { callerId: profile.id };
+      }
+
+      // Legacy fallback: profiles.id == auth id (from before non-destructive linking)
+      const { data: legacyProfile } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('id', authId)
+        .maybeSingle();
+
+      if (legacyProfile) {
+        return { callerId: legacyProfile.id };
+      }
+
+      return { callerId: null, error: 'No roster profile linked to this auth account' };
     }
   }
 
@@ -50,13 +74,13 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-    // Resolve caller identity (JWT or x-acting-user-id)
+    // Resolve caller identity (JWT or x-acting-user-id) — always returns roster profile ID
     const { callerId, error: idError } = await resolveCallerId(req, supabaseUrl, anonKey, adminClient);
     if (!callerId) {
       return jsonResponse({ error: idError ?? 'Unauthorized' }, 401);
     }
 
-    // Check admin role
+    // Check admin role (user_roles.user_id is roster ID)
     const { data: roleRow } = await adminClient
       .from('user_roles')
       .select('role')
@@ -73,59 +97,85 @@ Deno.serve(async (req) => {
     const body = await req.json();
     const { action } = body;
 
-    // ── Action: create (invite user) ─────────────────────────────
+    // ── Action: create (roster-first, then invite) ───────────────
     if (action === 'create') {
       const { email, name, departmentId, role, appRole, weeklyExpectedHours } = body;
 
       if (!email) return jsonResponse({ error: 'email is required' }, 400);
 
-      // Invite user (triggers handle_new_user which creates profile + default employee role)
-      const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
+      const emailLower = email.trim().toLowerCase();
+
+      // 1. Find or create roster profile by email
+      let rosterId: string;
+      const { data: existing } = await adminClient
+        .from('profiles')
+        .select('id')
+        .eq('email', emailLower)
+        .maybeSingle();
+
+      if (existing) {
+        rosterId = existing.id;
+        // Update profile fields if provided
+        const profileUpdates: Record<string, unknown> = {};
+        if (name) profileUpdates.name = name;
+        if (departmentId) profileUpdates.department_id = departmentId;
+        if (role) profileUpdates.role = role;
+        if (weeklyExpectedHours !== undefined) profileUpdates.weekly_expected_hours = weeklyExpectedHours;
+
+        if (Object.keys(profileUpdates).length > 0) {
+          const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', rosterId);
+          if (updateErr) return jsonResponse({ error: 'Profile update failed: ' + updateErr.message }, 400);
+        }
+      } else {
+        rosterId = crypto.randomUUID();
+        const { error: insErr } = await adminClient.from('profiles').insert({
+          id: rosterId,
+          email: emailLower,
+          name: name || '',
+          department_id: departmentId || null,
+          role: role || '',
+          weekly_expected_hours: weeklyExpectedHours ?? 40,
+          is_active: true,
+        });
+        if (insErr) return jsonResponse({ error: 'Profile creation failed: ' + insErr.message }, 400);
+      }
+
+      // 2. Upsert user_roles with roster ID
+      const desiredRole = appRole || 'employee';
+      const { error: roleUpsertErr } = await adminClient
+        .from('user_roles')
+        .upsert({ user_id: rosterId, role: desiredRole }, { onConflict: 'user_id' });
+      if (roleUpsertErr) {
+        return jsonResponse({ error: 'Role upsert failed: ' + roleUpsertErr.message }, 400);
+      }
+
+      // 3. Provision auth user (invite-first)
+      let authId: string | null = null;
+      const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(emailLower, {
         data: { full_name: name || '' },
       });
 
-      if (inviteError) {
-        return jsonResponse({ error: inviteError.message }, 400);
-      }
-
-      const authUserId = inviteData.user.id;
-
-      // Wait for handle_new_user trigger to link the profile via auth_user_id
-      let profileId: string | null = null;
-      for (let attempt = 0; attempt < 10; attempt++) {
-        const { data: exists } = await adminClient
-          .from('profiles')
-          .select('id')
-          .eq('auth_user_id', authUserId)
-          .maybeSingle();
-        if (exists) { profileId = exists.id; break; }
-        await new Promise(r => setTimeout(r, 300));
-      }
-
-      if (!profileId) {
-        return jsonResponse({ error: 'Profile was not created by trigger' }, 500);
-      }
-
-      // Update profile with additional fields
-      const profileUpdates: Record<string, unknown> = {};
-      if (name) profileUpdates.name = name;
-      if (departmentId) profileUpdates.department_id = departmentId;
-      if (role) profileUpdates.role = role;
-      if (weeklyExpectedHours !== undefined) profileUpdates.weekly_expected_hours = weeklyExpectedHours;
-
-      if (Object.keys(profileUpdates).length > 0) {
-        const { error: updateErr } = await adminClient.from('profiles').update(profileUpdates).eq('id', profileId);
-        if (updateErr) {
-          return jsonResponse({ error: 'Profile update failed: ' + updateErr.message }, 400);
+      if (!inviteError && inviteData?.user) {
+        authId = inviteData.user.id;
+      } else {
+        // Invite failed (likely already exists) — find existing auth user
+        const { data: listData } = await adminClient.auth.admin.listUsers();
+        const existingAuth = listData?.users?.find(
+          (u: { email?: string }) => u.email?.toLowerCase() === emailLower
+        );
+        if (existingAuth) {
+          authId = existingAuth.id;
+          // Send magiclink for existing user
+          await adminClient.auth.admin.generateLink({ type: 'magiclink', email: emailLower });
         }
       }
 
-      // If appRole is admin, update user_roles
-      if (appRole === 'admin') {
-        await adminClient.from('user_roles').update({ role: 'admin' }).eq('user_id', profileId);
+      // 4. Link roster ↔ auth
+      if (authId) {
+        await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', rosterId);
       }
 
-      return jsonResponse({ success: true, userId: profileId });
+      return jsonResponse({ success: true, userId: rosterId, authUserId: authId });
     }
 
     // ── Action: update ───────────────────────────────────────────
@@ -351,28 +401,25 @@ Deno.serve(async (req) => {
       const { userId } = body;
       if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
 
-      // Look up profile
+      // Look up profile by roster ID
       const { data: profile } = await adminClient
         .from('profiles')
-        .select('id, email, name')
+        .select('id, email, name, auth_user_id')
         .eq('id', userId)
         .single();
 
       if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
 
-      // Check if auth user already exists for this email
+      // Find auth user by email
       const { data: listData } = await adminClient.auth.admin.listUsers();
       const existingAuthUser = listData?.users?.find(
         (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
       );
 
-      if (existingAuthUser) {
-        // Link auth_user_id if not already set
-        await adminClient
-          .from('profiles')
-          .update({ auth_user_id: existingAuthUser.id })
-          .eq('id', profile.id);
+      let authId: string;
 
+      if (existingAuthUser) {
+        authId = existingAuthUser.id;
         // Re-send via magiclink (invite type fails if user already exists)
         const { error: linkErr } = await adminClient.auth.admin.generateLink({
           type: 'magiclink',
@@ -386,16 +433,16 @@ Deno.serve(async (req) => {
           { data: { full_name: profile.name } }
         );
         if (inviteErr) return jsonResponse({ error: inviteErr.message }, 400);
-
-        // Link auth_user_id (trigger may have already done this, but ensure it)
-        const newAuthId = inviteData.user.id;
-        await adminClient
-          .from('profiles')
-          .update({ auth_user_id: newAuthId })
-          .eq('id', profile.id);
+        authId = inviteData.user.id;
       }
 
-      return jsonResponse({ success: true });
+      // Link auth_user_id (only set, never mutate profiles.id)
+      await adminClient
+        .from('profiles')
+        .update({ auth_user_id: authId })
+        .eq('id', profile.id);
+
+      return jsonResponse({ success: true, authUserId: authId });
     }
 
     // ── Action: send-reset ──────────────────────────────────────
@@ -411,7 +458,7 @@ Deno.serve(async (req) => {
 
       if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
 
-      // Check auth user exists
+      // Check auth user exists by email
       const { data: listData } = await adminClient.auth.admin.listUsers();
       const authUser = listData?.users?.find(
         (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
@@ -471,14 +518,14 @@ Deno.serve(async (req) => {
 
       if (createErr) return jsonResponse({ error: createErr.message }, 400);
 
-      // Link auth_user_id (trigger may have already done this, but ensure it)
-      const newAuthId = createData.user.id;
+      // Link auth_user_id (only set, never mutate profiles.id)
+      const authId = createData.user.id;
       await adminClient
         .from('profiles')
-        .update({ auth_user_id: newAuthId })
+        .update({ auth_user_id: authId })
         .eq('id', profile.id);
 
-      return jsonResponse({ success: true });
+      return jsonResponse({ success: true, authUserId: authId });
     }
 
     // ── Action: bulk-provision ──────────────────────────────────
@@ -512,13 +559,15 @@ Deno.serve(async (req) => {
 
           const emailLower = profile.email.toLowerCase();
           const existingAuth = authUsersByEmail.get(emailLower);
+          let authId: string;
 
           if (existingAuth) {
+            authId = existingAuth.id;
             // Link auth_user_id
-            await adminClient.from('profiles').update({ auth_user_id: existingAuth.id }).eq('id', profile.id);
+            await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
             // Re-invite
             const { error: linkErr } = await adminClient.auth.admin.generateLink({
-              type: 'invite',
+              type: 'magiclink',
               email: profile.email,
             });
             if (linkErr) {
@@ -536,11 +585,11 @@ Deno.serve(async (req) => {
               results.push({ userId: uid, email: profile.email, status: 'error', error: inviteErr.message });
               continue;
             }
-            const newAuthId = inviteData.user.id;
-            // Link auth_user_id (trigger may have already done this)
-            await adminClient.from('profiles').update({ auth_user_id: newAuthId }).eq('id', profile.id);
-            // Add to map for subsequent lookups
-            authUsersByEmail.set(emailLower, { id: newAuthId });
+            authId = inviteData.user.id;
+            // Link auth_user_id (only set, never mutate profiles.id)
+            await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
+            // Cache for subsequent lookups
+            authUsersByEmail.set(emailLower, { id: authId });
             results.push({ userId: uid, email: profile.email, status: 'invited' });
           }
         } catch (err) {
