@@ -126,16 +126,41 @@ export function useDashboardData(entries: EntryLike[], label: string) {
     }
 
     // ── Cross-widget reconciliation ──────────────────────────────────
+    const TOLERANCE = 2;
+    const issues: string[] = [];
+
+    // Check 1: billing buckets sum to total
+    const billingSum = billableMinutes + maybeMinutes + notBillableMinutes;
+    if (Math.abs(billingSum - totalMinutes) > TOLERANCE) {
+      issues.push(`Billing mix: ${billableMinutes}+${maybeMinutes}+${notBillableMinutes}=${billingSum} vs total=${totalMinutes}`);
+    }
+
+    // Check 2: topProjects sum matches total
     const projSum = topProjects.reduce((s, p) => s + p.minutes, 0);
-    const reconcileResult: ReconcileResult = reconcileDashboardTotals({
-      entries,
-      kpiTotalMinutes: totalMinutes,
-      kpiBillable: billableMinutes,
-      kpiMaybe: maybeMinutes,
-      kpiNotBillable: notBillableMinutes,
-      teamRowsTotalMinutes: projSum,
-      label,
-    });
+    if (Math.abs(projSum - totalMinutes) > TOLERANCE) {
+      issues.push(`Projects sum: ${projSum} vs total: ${totalMinutes}`);
+    }
+
+    // Check 3: topActivities sum matches total
+    const actSum = topActivities.reduce((s, a) => s + a.minutes, 0);
+    if (Math.abs(actSum - totalMinutes) > TOLERANCE) {
+      issues.push(`Activities sum: ${actSum} vs total: ${totalMinutes}`);
+    }
+
+    // Check 4: entry-level sum matches total (catches hook vs caller drift)
+    const entrySum = entries.reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0);
+    if (Math.abs(entrySum - totalMinutes) > TOLERANCE) {
+      issues.push(`Entry sum: ${entrySum} vs KPI total: ${totalMinutes}`);
+    }
+
+    const reconcileResult: ReconcileResult = {
+      hasMismatch: issues.length > 0,
+      details: issues,
+    };
+
+    if (issues.length > 0) {
+      console.warn(`[Reconcile/${label}] Mismatch detected:`, issues);
+    }
 
     return { totals, topProjects, topActivities, reconcileResult };
   }, [entries, label]);

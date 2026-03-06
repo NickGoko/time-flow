@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { ArrowLeft, Clock, TrendingUp, AlertCircle } from 'lucide-react';
+import { ReconciliationBanner } from '@/components/ReconciliationBanner';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 import { TopBar } from '@/components/TopBar';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -94,7 +95,7 @@ const EmployeeInsights = () => {
 
   // ── Aggregated data (single-pass via shared hook) ───────────────────
   const dashLabel = `Personal/${range}/${category}/${projectFilter}`;
-  const { totals: summary, topProjects, topActivities } = useDashboardData(rangeEntries, dashLabel);
+  const { totals: summary, topProjects, topActivities, reconcileResult } = useDashboardData(rangeEntries, dashLabel);
 
   const expectedMinutes = getExpectedMinutes(range, days);
   const progressPct = expectedMinutes > 0 ? Math.round((summary.totalMinutes / expectedMinutes) * 100) : 0;
@@ -212,6 +213,8 @@ const EmployeeInsights = () => {
             </SelectContent>
           </Select>
         </div>
+
+        <ReconciliationBanner result={reconcileResult} />
 
         {/* Summary card */}
         <Card>

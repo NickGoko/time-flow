@@ -12,6 +12,7 @@ import { useDashboardDataset, RangeOption, ScopeOption } from '@/hooks/useDashbo
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
+import { ReconciliationBanner } from '@/components/ReconciliationBanner';
 
 export default function AdminReportsOverview() {
   const [range, setRange] = useState<RangeOption>('this_week');
@@ -102,6 +103,7 @@ export default function AdminReportsOverview() {
         </div>
 
         <div className="mt-6 space-y-6">
+          <ReconciliationBanner result={reconcileResult} />
           <MetricCards metrics={metrics} />
 
           {/* Operational insights */}
