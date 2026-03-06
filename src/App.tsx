@@ -23,19 +23,7 @@ import { AUTH_ENABLED, DEV_MODE } from "@/lib/devMode";
 const queryClient = new QueryClient();
 
 function SessionGate() {
-  const { currentUser, isLoading } = useCurrentUser();
-
-  // When auth is disabled, pass through without redirect
-  if (!AUTH_ENABLED) {
-    if (isLoading) {
-      return (
-        <div className="flex min-h-screen items-center justify-center bg-background">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-        </div>
-      );
-    }
-    return <Outlet />;
-  }
+  const { currentUser, isLoading, notProvisioned } = useCurrentUser();
 
   if (isLoading) {
     return (
@@ -44,6 +32,22 @@ function SessionGate() {
       </div>
     );
   }
+
+  // Account exists in auth but has no roster profile
+  if (notProvisioned) {
+    return (
+      <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-background">
+        <h1 className="text-2xl font-semibold">Account not provisioned</h1>
+        <p className="text-muted-foreground">Your account has not been linked to the system yet. Please contact your administrator.</p>
+      </div>
+    );
+  }
+
+  // When auth is disabled (or demo fallback handled it), pass through
+  if (!AUTH_ENABLED) {
+    return <Outlet />;
+  }
+
   if (!currentUser) return <Navigate to={DEV_MODE ? "/dev/access" : "/sign-in"} replace />;
   return <Outlet />;
 }

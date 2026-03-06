@@ -17,6 +17,7 @@ interface UserContextType {
   isSuperAdmin: boolean;
   isLoading: boolean;
   isDevMode: boolean;
+  notProvisioned: boolean;
   addUser: (data: Omit<User, 'id'>) => Promise<void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
@@ -34,8 +35,17 @@ const UserContext = createContext<UserContextType | undefined>(undefined);
  * @param byAuthId - when true, look up by auth_user_id column instead of id
  */
 async function fetchUserProfile(userId: string, byAuthId = false): Promise<User | null> {
-  const col = byAuthId ? 'auth_user_id' : 'id';
-  const profileRes = await supabase.from('profiles').select('*').eq(col, userId).single();
+  let profileRes;
+  if (byAuthId) {
+    // Primary: lookup by auth_user_id
+    profileRes = await supabase.from('profiles').select('*').eq('auth_user_id', userId).single();
+    // Fallback: legacy users where profiles.id was rewritten to match auth id
+    if (profileRes.error || !profileRes.data) {
+      profileRes = await supabase.from('profiles').select('*').eq('id', userId).single();
+    }
+  } else {
+    profileRes = await supabase.from('profiles').select('*').eq('id', userId).single();
+  }
 
   if (profileRes.error || !profileRes.data) return null;
 
@@ -63,6 +73,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUserState] = useState<User | null>(null);
   const [allUsersList, setAllUsersList] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [notProvisioned, setNotProvisioned] = useState(false);
 
   const refreshAllUsers = useCallback(async () => {
     const [profilesRes, rolesRes, scopesRes] = await Promise.all([
@@ -104,38 +115,49 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // ── Auth-disabled / demo mode bootstrap ──────────────────────
   useEffect(() => {
     if (AUTH_ENABLED) return;
-
-    (async () => {
-      const users = await refreshAllUsers();
-      if (!users || users.length === 0) {
-        setIsLoading(false);
-        return;
-      }
-      // Auto-select first admin, fallback to first active user
-      const activeUsers = users.filter(u => u.isActive);
-      const firstAdmin = activeUsers.find(u => u.appRole === 'admin' || u.appRole === 'super_admin');
-      setCurrentUserState(firstAdmin ?? activeUsers[0] ?? null);
-      setIsLoading(false);
-    })();
-  }, [refreshAllUsers]);
+    demoBootstrap();
+  }, [demoBootstrap]);
 
   // ── Auth-enabled bootstrap ───────────────────────────────────
-  const handleSession = useCallback(async (session: Session | null) => {
-    if (!session?.user) {
-      setCurrentUserState(null);
+  const demoBootstrap = useCallback(async () => {
+    const users = await refreshAllUsers();
+    if (!users || users.length === 0) {
       setIsLoading(false);
       return;
     }
-
-    // Auth session user.id is the auth UUID; look up profile by auth_user_id
-    const user = await fetchUserProfile(session.user.id, true);
-    setCurrentUserState(user);
+    const activeUsers = users.filter(u => u.isActive);
+    const firstAdmin = activeUsers.find(u => u.appRole === 'admin' || u.appRole === 'super_admin');
+    setCurrentUserState(firstAdmin ?? activeUsers[0] ?? null);
+    setNotProvisioned(false);
     setIsLoading(false);
-
-    if (user) {
-      refreshAllUsers();
-    }
   }, [refreshAllUsers]);
+
+  const handleSession = useCallback(async (session: Session | null) => {
+    if (!session?.user) {
+      // No auth session: fall back to demo if enabled
+      if (DEMO_MODE) {
+        await demoBootstrap();
+      } else {
+        setCurrentUserState(null);
+        setIsLoading(false);
+      }
+      return;
+    }
+
+    // Auth session user.id is the auth UUID; look up profile by auth_user_id (with legacy fallback)
+    const user = await fetchUserProfile(session.user.id, true);
+    if (user) {
+      setCurrentUserState(user);
+      setNotProvisioned(false);
+      setIsLoading(false);
+      refreshAllUsers();
+    } else {
+      // Auth user exists but no roster profile → not provisioned
+      setCurrentUserState(null);
+      setNotProvisioned(true);
+      setIsLoading(false);
+    }
+  }, [refreshAllUsers, demoBootstrap]);
 
   useEffect(() => {
     if (!AUTH_ENABLED) return;
@@ -165,13 +187,17 @@ export function UserProvider({ children }: { children: ReactNode }) {
 
   const signOut = useCallback(async () => {
     if (!AUTH_ENABLED) {
-      // In demo mode, just clear the acting user
       setCurrentUserState(null);
       return;
     }
     await supabase.auth.signOut();
-    setCurrentUserState(null);
-  }, []);
+    // If demo mode is available, fall back to it instead of leaving user null
+    if (DEMO_MODE) {
+      await demoBootstrap();
+    } else {
+      setCurrentUserState(null);
+    }
+  }, [demoBootstrap]);
 
   // ── Admin user management via Edge Function ───────────────────
 
@@ -317,6 +343,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     isSuperAdmin: currentUser?.appRole === 'super_admin',
     isLoading,
     isDevMode: DEV_MODE,
+    notProvisioned,
     addUser,
     updateUser,
     toggleUserActive,
@@ -324,7 +351,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     sendReset,
     createWithPassword,
     bulkProvision,
-  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword, bulkProvision]);
+  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, notProvisioned, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword, bulkProvision]);
 
   return (
     <UserContext.Provider value={value}>
