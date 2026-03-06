@@ -93,6 +93,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       weeklyExpectedHours: p.weekly_expected_hours,
       isActive: p.is_active,
       avatarUrl: p.avatar_url ?? undefined,
+      authUserId: (p as any).auth_user_id ?? undefined,
       managedDepartments: scopeMap.get(p.id),
     }));
 
@@ -231,7 +232,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
       if (AUTH_ENABLED) {
         const session = (await supabase.auth.getSession()).data.session;
         if (session) {
-          const refreshed = await fetchUserProfile(session.user.id);
+          const refreshed = await fetchUserProfile(session.user.id, true);
           if (refreshed) setCurrentUserState(refreshed);
         }
       } else {
