@@ -1,6 +1,6 @@
-import { UserWeekSummary, CohortBucket, ReportMetrics, DailyBreakdown, TeamMemberSummary, ProjectBreakdownItem, OperationalInsights } from '@/types/reports';
+import { UserWeekSummary, CohortBucket, ReportMetrics, DailyBreakdown, TeamMemberSummary, ProjectBreakdownItem, DepartmentBreakdownItem, OperationalInsights } from '@/types/reports';
 import { TimeEntry, toTotalMinutes, User, WeekStatus, WEEKLY_EXPECTED_HOURS } from '@/types';
-import { getWeekDate, parseLocalDate, projects } from '@/data/seed';
+import { getWeekDate, parseLocalDate, projects, departments } from '@/data/seed';
 
 // ── Cohort helpers (live from real data) ────────────────────────────
 
@@ -145,6 +145,72 @@ export function deriveDailyProjectBreakdown(
       } else {
         row[item.projectId] = dayEntries
           .filter(e => e.projectId === item.projectId)
+          .reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0);
+      }
+    }
+
+    return row;
+  });
+}
+
+// ── Department breakdown (top 7 + Other) ────────────────────────────
+
+export function deriveDepartmentBreakdown(
+  entries: TimeEntry[],
+  weekStart: string,
+  days: number,
+  users: User[],
+): DepartmentBreakdownItem[] {
+  const dates = Array.from({ length: days }, (_, i) => getWeekDate(weekStart, i));
+  const filtered = entries.filter(e => dates.includes(e.date));
+
+  const userDeptMap = new Map(users.map(u => [u.id, u.departmentId]));
+  const byDept = new Map<string, number>();
+  for (const e of filtered) {
+    const deptId = userDeptMap.get(e.userId) ?? 'unknown';
+    byDept.set(deptId, (byDept.get(deptId) || 0) + toTotalMinutes(e.hours, e.minutes));
+  }
+
+  const sorted = [...byDept.entries()].sort((a, b) => b[1] - a[1]);
+  const top7 = sorted.slice(0, 7).map(([deptId, totalMinutes]) => {
+    const dept = departments.find(d => d.id === deptId);
+    return { departmentId: deptId, departmentName: dept?.name ?? deptId, totalMinutes };
+  });
+
+  const otherMinutes = sorted.slice(7).reduce((s, [, m]) => s + m, 0);
+  if (otherMinutes > 0) {
+    top7.push({ departmentId: 'other', departmentName: 'Other', totalMinutes: otherMinutes });
+  }
+
+  return top7;
+}
+
+// ── Daily breakdown by department ───────────────────────────────────
+
+export function deriveDailyDepartmentBreakdown(
+  entries: TimeEntry[],
+  weekStart: string,
+  days: number,
+  deptItems: DepartmentBreakdownItem[],
+  users: User[],
+): Record<string, unknown>[] {
+  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const userDeptMap = new Map(users.map(u => [u.id, u.departmentId]));
+  const topIds = new Set(deptItems.filter(d => d.departmentId !== 'other').map(d => d.departmentId));
+
+  return Array.from({ length: days }, (_, i) => {
+    const date = getWeekDate(weekStart, i);
+    const dayEntries = entries.filter(e => e.date === date);
+    const row: Record<string, unknown> = { date, dayLabel: dayLabels[i % 7] };
+
+    for (const item of deptItems) {
+      if (item.departmentId === 'other') {
+        row['other'] = dayEntries
+          .filter(e => !topIds.has(userDeptMap.get(e.userId) ?? 'unknown'))
+          .reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0);
+      } else {
+        row[item.departmentId] = dayEntries
+          .filter(e => userDeptMap.get(e.userId) === item.departmentId)
           .reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0);
       }
     }

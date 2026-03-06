@@ -16,7 +16,7 @@ import { departments } from '@/data/seed';
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 
-type RangeOption = 'this_week' | 'last_week' | 'this_month';
+type RangeOption = 'this_week' | 'last_week' | 'this_month' | 'today' | 'this_quarter' | 'this_year';
 type ScopeOption = 'my' | 'department' | 'org';
 
 export default function AdminReportsOverview() {
@@ -80,6 +80,27 @@ export default function AdminReportsOverview() {
       const end = new Date(start); end.setDate(end.getDate() + 6);
       return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
     }
+    if (range === 'today') {
+      const todayStr = now.toISOString().slice(0, 10);
+      const ws = getWeekStart(now);
+      const dayOfWeek = (now.getDay() + 6) % 7; // Mon=0
+      return { weekStart: ws, days: dayOfWeek + 1, rangeStartDate: now, rangeEndDate: now };
+    }
+    if (range === 'this_quarter') {
+      const qMonth = Math.floor(now.getMonth() / 3) * 3;
+      const first = new Date(now.getFullYear(), qMonth, 1);
+      const ws = getWeekStart(first);
+      const start = parseLocalDate(ws);
+      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      return { weekStart: ws, days: Math.min(totalDays, 100), rangeStartDate: start, rangeEndDate: now };
+    }
+    if (range === 'this_year') {
+      const first = new Date(now.getFullYear(), 0, 1);
+      const ws = getWeekStart(first);
+      const start = parseLocalDate(ws);
+      const totalDays = Math.ceil((now.getTime() - start.getTime()) / (24 * 60 * 60 * 1000)) + 1;
+      return { weekStart: ws, days: Math.min(totalDays, 366), rangeStartDate: start, rangeEndDate: now };
+    }
     const first = new Date(now.getFullYear(), now.getMonth(), 1);
     const dayCount = now.getDate();
     const ws = getWeekStart(first);
@@ -118,7 +139,7 @@ export default function AdminReportsOverview() {
         <div className="mt-4 flex flex-wrap items-center gap-3">
           <div className="flex gap-1">
             <Button size="sm" variant={scope === 'my' ? 'default' : 'outline'} onClick={() => setScope('my')}>
-              My
+              My dashboard
             </Button>
             {canViewDepartment && (
               <Button size="sm" variant={scope === 'department' ? 'default' : 'outline'} onClick={() => setScope('department')}>
@@ -147,8 +168,8 @@ export default function AdminReportsOverview() {
         </div>
 
         {/* Range selector */}
-        <div className="mt-3 flex gap-1">
-          {([['this_week', 'This week'], ['last_week', 'Last week'], ['this_month', 'This month']] as const).map(
+        <div className="mt-3 flex flex-wrap gap-1">
+          {([['today', 'Today'], ['this_week', 'This week'], ['last_week', 'Last week'], ['this_month', 'This month'], ['this_quarter', 'This quarter'], ['this_year', 'This year']] as [RangeOption, string][]).map(
             ([value, label]) => (
               <Button
                 key={value}

@@ -48,6 +48,12 @@ export interface ProjectBreakdownItem {
   totalMinutes: number;
 }
 
+export interface DepartmentBreakdownItem {
+  departmentId: string;
+  departmentName: string;
+  totalMinutes: number;
+}
+
 export interface OperationalInsights {
   maybeBillableCount: number;
   maybeBillableMinutes: number;
