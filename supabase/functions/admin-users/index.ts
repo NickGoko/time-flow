@@ -12,7 +12,7 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: ReturnType<typeof createClient>): Promise<{ callerId: string | null; error?: string }> {
+async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   // Try JWT first
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
