@@ -118,14 +118,6 @@ const EmployeeInsights = () => {
       else if (e.billableStatus === 'maybe_billable') maybeMinutes += mins;
       else notBillableMinutes += mins;
     }
-    reconcileDashboardTotals({
-      entries: rangeEntries,
-      kpiTotalMinutes: totalMinutes,
-      kpiBillable: billableMinutes,
-      kpiMaybe: maybeMinutes,
-      kpiNotBillable: notBillableMinutes,
-      label: `Personal/${range}/${category}/${projectFilter}`,
-    });
     return { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes };
   }, [rangeEntries, range, category, projectFilter]);
 
@@ -149,6 +141,7 @@ const EmployeeInsights = () => {
         id,
         name: getProjectById(id)?.name ?? id,
         minutes: data.minutes,
+        billableMinutes: data.billableMinutes,
         billablePct: data.minutes > 0 ? Math.round((data.billableMinutes / data.minutes) * 100) : 0,
       }))
       .sort((a, b) => b.minutes - a.minutes);
@@ -156,8 +149,8 @@ const EmployeeInsights = () => {
     const top5 = sorted.slice(0, 5);
     const rest = sorted.slice(5);
     const otherMins = rest.reduce((s, p) => s + p.minutes, 0);
-    const otherBillMins = rest.reduce((s, p) => s + Math.round(p.minutes * p.billablePct / 100), 0);
-    top5.push({ id: '__other__', name: 'Other', minutes: otherMins, billablePct: otherMins > 0 ? Math.round((otherBillMins / otherMins) * 100) : 0 });
+    const otherBillMins = rest.reduce((s, p) => s + p.billableMinutes, 0);
+    top5.push({ id: '__other__', name: 'Other', minutes: otherMins, billableMinutes: otherBillMins, billablePct: otherMins > 0 ? Math.round((otherBillMins / otherMins) * 100) : 0 });
     return top5;
   }, [rangeEntries]);
 
@@ -168,11 +161,30 @@ const EmployeeInsights = () => {
       const label = getActivityLabel(e);
       map[label] = (map[label] || 0) + toTotalMinutes(e.hours, e.minutes);
     }
-    return Object.entries(map)
+    const all = Object.entries(map)
       .map(([label, mins]) => ({ label, minutes: mins }))
-      .sort((a, b) => b.minutes - a.minutes)
-      .slice(0, 8);
+      .sort((a, b) => b.minutes - a.minutes);
+    if (all.length <= 8) return all;
+    const top8 = all.slice(0, 8);
+    const otherMins = all.slice(8).reduce((s, a) => s + a.minutes, 0);
+    if (otherMins > 0) top8.push({ label: 'Other', minutes: otherMins });
+    return top8;
   }, [rangeEntries]);
+
+  // ── Cross-widget reconciliation ────────────────────────────────────
+  useMemo(() => {
+    const projSum = topProjects.reduce((s, p) => s + p.minutes, 0);
+    const actSum = topActivities.reduce((s, a) => s + a.minutes, 0);
+    reconcileDashboardTotals({
+      entries: rangeEntries,
+      kpiTotalMinutes: summary.totalMinutes,
+      kpiBillable: summary.billableMinutes,
+      kpiMaybe: summary.maybeMinutes,
+      kpiNotBillable: summary.notBillableMinutes,
+      teamRowsTotalMinutes: projSum,
+      label: `Personal/${range}/${category}/${projectFilter}/widgets(proj=${projSum},act=${actSum})`,
+    });
+  }, [topProjects, topActivities, rangeEntries, summary, range, category, projectFilter]);
 
   // ── 6-Week Trend (filter-aware) ────────────────────────────────────
   const chartData = useMemo(() => {
