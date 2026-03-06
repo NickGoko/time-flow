@@ -1,68 +1,95 @@
 
 
-# Plan: Time Granularity, Team Summary Scope Consistency, and Unified Data Query
+# Plan: Personal Dashboard — Time Range Controls, Shared Aggregation, and Breakdown Tables
 
-## Summary
+## 1. Audit — Current State
 
-Three changes across 4 files: (1) the new time ranges already exist but compliance % in TeamSummaryTable is hardcoded to weekly expected hours — fix it to be range-aware; (2) make TeamSummaryTable show a single-row "My summary" when scope=My; (3) extract a shared `useDashboardDataset` hook so all sections consume one filtered dataset.
+### File map
 
-## Current issues
+| File | Role |
+|---|---|
+| `src/pages/EmployeeInsights.tsx` | Page component at `/me/insights`. 4 sections: Today card, This Week card (with top projects table), 6-Week Trend chart, Recent History table |
+| `src/components/PersonalDashboard.tsx` | Small 4-card grid on the Index page (not the Dashboard page) |
+| `src/hooks/useDashboardDataset.ts` | Shared hook used by AdminReportsOverview. Has `RangeOption` type and `getExpectedMinutes()` |
+| `src/contexts/TimeEntriesContext.tsx` | Provides `getOwnEntries()`, `getWeekSummary()`, `getWeeklyTotals()`, `getRecentDays()` |
+| `src/data/seed.ts` | `getProjectById()`, `getPhaseById()`, `getActivityTypeById()`, `getEntryWithDetails()` |
 
-1. **Time ranges already added** — Today/Quarter/Year chips exist and work for KPIs + chart. But `deriveTeamSummary` in `reportsMockData.ts` (line 232) hardcodes `WEEKLY_EXPECTED_HOURS * 60` for compliance %, which is wrong for Today (should be 8h), This month (working days × 8h), This quarter, This year.
+### Current date computation
 
-2. **Team summary ignores scope=My** — Currently hidden when `scope === 'my'` (line 236 of AdminReportsOverview). Should show a single-row summary for the current user.
+- **Today**: hardcoded `new Date()` → `toLocalDateString(today)` → filters `ownEntries` by date string
+- **This Week**: `getWeekStart(today)` → `getWeekSummary(userId, weekStart)` which internally filters entries for 7 days
+- **Trend**: `getWeeklyTotals(userId, 6)` — last 6 weeks, hardcoded
+- **History**: `getRecentDays(userId, 28)` — last 28 days, hardcoded
 
-3. **No unified dataset hook** — AdminReportsOverview computes `scopedEntries`, `scopedUsers`, `scopedWeekStatuses`, `weekStart`, `days`, `rangeStartDate`, `rangeEndDate` inline. Extract to a hook for reuse and single-source-of-truth.
+### Shared helpers available
 
-4. **CohortWidget ignores range** — always uses `getWeekStart()` (current week) regardless of the selected range. Should use the same range.
+`useDashboardDataset` already has `RangeOption` type (`today | this_week | last_week | this_month | this_quarter | this_year`) and date window computation. Can reuse `RangeOption` type and the date window logic. However, the hook itself is admin-oriented (scoped users, departments). For the personal dashboard, we just need the date window computation — we can import and reuse `RangeOption` and the date range math.
 
-## Files to change (4)
+### Entry structure
+
+`TimeEntry` has: `projectId`, `phaseId`, `activityTypeId`, `workAreaId`, `workAreaActivityTypeId`, `billableStatus`, `hours`, `minutes`, `date`.
+
+Resolvers exist: `getProjectById()`, `getPhaseById()`, `getActivityTypeById()`.
+
+## 2. Implementation Plan
+
+### Files to change (2)
 
 | # | File | Change |
 |---|---|---|
-| 1 | `src/hooks/useDashboardDataset.ts` | **New.** Extract scope/range/filter logic from AdminReportsOverview into a reusable hook. Returns `scopedEntries`, `scopedUsers`, `scopedWeekStatuses`, `weekStart`, `days`, `rangeStartDate`, `rangeEndDate`, `metrics`, `insights`, `blockedByCapCount`. |
-| 2 | `src/pages/AdminReportsOverview.tsx` | Replace inline computation with `useDashboardDataset()`. Show TeamSummaryTable for all scopes (remove `scope !== 'my'` guard). Pass `range` to TeamSummaryTable and CohortWidget. |
-| 3 | `src/components/admin/TeamSummaryTable.tsx` | Accept `range` prop. Compute `expectedMinutes` based on range: Today → 8h, This week/Last week → 40h, This month/quarter/year → (working days in range × 8h). For scope=My, show single row with "My summary" heading instead of "Team Summary". |
-| 4 | `src/components/admin/CohortWidget.tsx` | Accept `weekStart` and `days` as props instead of computing internally. Use parent-provided range. |
-| 5 | `src/data/reportsMockData.ts` | Update `deriveTeamSummary` to accept `expectedMinutesPerUser` parameter instead of hardcoding `WEEKLY_EXPECTED_HOURS * 60`. |
+| 1 | `src/pages/EmployeeInsights.tsx` | Add range chips, recompute all sections from range-filtered entries, add Top Projects and Top Activities tables |
+| 2 | `src/hooks/useDashboardDataset.ts` | Extract `getDateWindow(range)` as a standalone exported function (currently inline in the hook). Both pages reuse it. |
 
-## Compliance % calculation
+### Detailed changes
 
+**`src/hooks/useDashboardDataset.ts`** — Extract date window logic
+
+Export a pure function:
 ```typescript
-function getExpectedMinutes(range: RangeOption, days: number): number {
-  if (range === 'today') return 8 * 60;                    // 480
-  if (range === 'this_week' || range === 'last_week') return 40 * 60; // 2400
-  // For month/quarter/year: count weekdays in the range
-  // Approximate: days × (5/7) × 8h
-  const workingDays = Math.round(days * 5 / 7);
-  return workingDays * 8 * 60;
-}
+export function getDateWindow(range: RangeOption): { weekStart: string; days: number; rangeStartDate: Date; rangeEndDate: Date }
 ```
 
-## useDashboardDataset hook
+This is the same logic currently on lines 52-95, extracted so `EmployeeInsights` can call it without using the full hook. The hook itself calls `getDateWindow(range)` internally (no behavior change).
 
-Encapsulates all the logic currently on lines 22–127 of AdminReportsOverview:
-- Inputs: `scope`, `selectedDeptId`, `range`
-- Reads from `useTimeEntries()` and `useAuthenticatedUser()`
-- Returns: `{ scopedEntries, scopedUsers, scopedWeekStatuses, weekStart, days, rangeStartDate, rangeEndDate, metrics, insights, blockedByCapCount, availableDepartments, canViewDepartment, canViewOrg }`
+**`src/pages/EmployeeInsights.tsx`** — Major rework
 
-AdminReportsOverview becomes a thin UI shell that renders controls and passes hook output to children.
+1. **Range state**: Add `const [range, setRange] = useState<RangeOption>('this_week')`. Render 6 chip buttons matching Reports Overview style.
 
-## TeamSummaryTable for scope=My
+2. **Filtered entries**: Use `getDateWindow(range)` to get `rangeStartDate`/`rangeEndDate`. Filter `ownEntries` to entries within that window:
+   ```typescript
+   const rangeEntries = useMemo(() => {
+     const startStr = toLocalDateString(rangeStartDate);
+     const endStr = toLocalDateString(rangeEndDate);
+     return ownEntries.filter(e => e.date >= startStr && e.date <= endStr);
+   }, [ownEntries, rangeStartDate, rangeEndDate]);
+   ```
 
-When `users` array has length 1, show heading "My summary" instead of "Team Summary". Table still renders with one row — same columns, same data. No special card needed.
+3. **Summary card** (replaces Today + This Week cards): Single summary card showing:
+   - Total hours vs expected (using `getExpectedMinutes(range, days)`)
+   - Progress bar
+   - Tri-state breakdown: Billable / Maybe billable / Not billable
+   - Reconciliation check in dev console: `console.assert(bill + maybe + notBill === total)`
 
-## CohortWidget range awareness
+4. **Top Projects table**: Top 5 projects by hours from `rangeEntries`, with "Other" row if >5. Columns: Project | Hours | %. Uses `getProjectById()` for names.
 
-Currently hardcodes `getWeekStart()`. Change to accept `weekStart` and `days` props, pass from parent. The "current week" label becomes dynamic based on range.
+5. **Top Activities table**: Top 8 activities by hours from `rangeEntries`. Columns: Activity | Hours | %. Activity label logic:
+   - External entry (`phaseId` set): `${getPhaseById(phaseId)?.name} → ${getActivityTypeById(activityTypeId)?.name}`
+   - Internal entry (`workAreaId` set): `${getPhaseById(workAreaId)?.name} → ${getActivityTypeById(workAreaActivityTypeId)?.name ?? 'Other'}`
+   - Fallback: "Uncategorised"
 
-## QA checklist
+6. **Layout order**: Range chips → Summary card → Top Projects + Top Activities (side by side on desktop, stacked on mobile) → 6-Week Trend chart → Recent History table.
 
-1. Switch to each range (Today through This year) — verify compliance % changes appropriately in team table
-2. Scope=My shows single-row table with "My summary" heading
-3. Scope=Department shows only department users, compliance % correct for range
-4. Scope=Org shows all users, compliance % correct for range
-5. CohortWidget reflects selected range, not just current week
-6. KPI totals match sum of team table Hours column
-7. Switching any filter immediately updates all sections
+7. **Empty state**: If `rangeEntries.length === 0`, show "No entries for this period" message. Keep Trend and History visible below.
+
+8. **Keep existing sections**: Trend chart and Recent History remain unchanged (they show fixed 6-week / 28-day windows regardless of range, which is useful context).
+
+### QA checklist
+
+1. Default "This week" shows same data as before
+2. Switch to each range — summary numbers update, tables update
+3. Billable + Maybe + Not billable = Total (check console for assertion)
+4. Top Projects shows correct project names and percentages sum to ~100%
+5. Top Activities shows correct labels for both external and internal entries
+6. Empty range (e.g., future week) shows empty state message
+7. Trend chart and History table remain unaffected by range selection
 
