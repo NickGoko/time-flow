@@ -268,7 +268,7 @@ export function UsersTable() {
       await updateUser(editingUser.id, updates, reason, managedDepartments);
     } else {
       const result = await addUser(data);
-      if (result?.action_link) {
+      if (result && result.action_link) {
         showInviteLink(result.action_link);
       }
     }
