@@ -317,6 +317,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (result?.error) { toast.error('Create login failed: ' + result.error); throw new Error(result.error); }
     toast.success('Login created. User can now sign in.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const bulkProvision = useCallback(async (userIds: string[]) => {
