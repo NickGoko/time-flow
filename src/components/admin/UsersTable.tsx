@@ -283,7 +283,7 @@ export function UsersTable() {
     } else {
       const result = await addUser(data);
       if (result && result.action_link) {
-        showInviteLink(result.action_link);
+        showInviteLink(result.action_link, result.link_type as string);
       }
     }
   }, [editingUser, updateUser, addUser, showInviteLink]);
