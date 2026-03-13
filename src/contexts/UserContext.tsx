@@ -18,13 +18,13 @@ interface UserContextType {
   isLoading: boolean;
   isDevMode: boolean;
   notProvisioned: boolean;
-  addUser: (data: Omit<User, 'id'>) => Promise<void>;
+  addUser: (data: Omit<User, 'id'>) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
-  provisionInvite: (userId: string) => Promise<void>;
+  provisionInvite: (userId: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   sendReset: (userId: string) => Promise<void>;
-  createWithPassword: (userId: string, password: string) => Promise<void>;
-  bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; error?: string }[]>;
+  createWithPassword: (userId: string, password: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
+  bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; action_link?: string | null; error?: string }[]>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
