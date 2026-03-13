@@ -1,93 +1,178 @@
 
 
-# Correctness Audit + Shared `getDashboardData` Module
+# Slice 3 Plan: Invite-first Provisioning + Linking Hardening
 
-## Part 1: Current Architecture Map
+## A) Preflight Assessment
 
-### Files where KPIs/charts/tables are calculated
+### What exists and works
+- `admin-users` returns `action_link` and `supabase_ref` for `create`, `provision-invite`, `bulk-provision` -- PASS
+- UI shows Copy link modal when `action_link` is returned -- PASS
+- Auth Status badges ("Provisioned" / "Not provisioned") based on `authUserId` -- PASS
+- Toast errors on failure -- PASS
+- `resolveCallerId` maps JWT auth ID → roster ID via `auth_user_id` with legacy fallback -- PASS
 
-| File | What it computes | Data source |
-|---|---|---|
-| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
-| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
-| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
-| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
-| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
-| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
-| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
-| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
-| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
-| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
+### Gaps found (require fixes)
+1. **No pagination on `listUsers()`** — all actions use `adminClient.auth.admin.listUsers()` which returns max 1000 users by default. Will fail silently for larger deployments.
+2. **Always generates `invite` link** — `generateInviteLink` always tries `type: 'invite'` then falls back to `type: 'magiclink'`. For existing auth users, a `recovery` link is more appropriate (lets user set/reset password). No `link_type` returned.
+3. **`send-reset` doesn't return `action_link`** — generates the recovery link but discards it, returning only `{ success: true }`.
+4. **`admin-impersonate` uses `callerId` directly** — doesn't map JWT auth ID → roster ID, so role check fails for linked users. Also looks up target by email instead of using `auth_user_id`.
+5. **No backfill** — existing profiles with matching auth emails but NULL `auth_user_id` remain unlinked.
+6. **UI doesn't distinguish invite vs recovery links** in the modal title.
 
-### Supabase queries executed
+### No Brick 3.0 needed
+All preflight items (action_link, supabase_ref, modal, badges) are present. The gaps above are addressed by Bricks 3.1–3.4.
 
-Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
+---
 
-The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
+## B) Brick Plan
 
-### Where billable/maybe/not billable totals are computed — drift sources
+### Brick 3.1 — SQL Only: Backfill `profiles.auth_user_id`
 
-**EmployeeInsights.tsx** computes totals **3 independent times**:
+**Scope**: Link existing auth users to roster profiles by email match. Diagnostics first, then safe backfill.
 
-1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
-2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
-3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
+**Files**: 1 migration file
 
-**AdminReportsOverview.tsx** has **2 independent computation paths**:
+**SQL**:
 
-1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
-2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
-3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
+Diagnostics (run manually via backend query tool):
+```sql
+-- Unlinked profiles with matching auth users
+SELECT p.id, p.email, p.auth_user_id
+FROM public.profiles p
+JOIN auth.users a ON lower(a.email) = lower(p.email)
+WHERE p.auth_user_id IS NULL;
 
-**Identified drift sources:**
-- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
-- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
-- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
-- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
+-- Duplicate emails in profiles (unsafe to auto-link)
+SELECT lower(email), count(*)
+FROM public.profiles
+GROUP BY lower(email) HAVING count(*) > 1;
 
-## Part 2: Recommended Shared Module
-
-### Approach: `useDashboardData(params)` hook
-
-Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
-
-```text
-src/hooks/useDashboardData.ts  (NEW — ~80 lines)
-
-Input:
-  entries: TimeEntry[]           // already scoped/filtered by caller
-  range: RangeOption
-  users?: User[]                 // for team/dept breakdowns
-  weekStatuses?: WeekStatus[]    // for submission status
-
-Output:
-  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
-  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
-  topActivities: { label, minutes }[]
-  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
-  teamSummary: TeamMemberSummary[]  (if users provided)
-  reconcileResult: ReconcileResult
+-- Orphan auth users (no matching profile)
+SELECT a.id, a.email
+FROM auth.users a
+LEFT JOIN public.profiles p ON lower(p.email) = lower(a.email)
+WHERE p.id IS NULL;
 ```
 
-### Key design decisions:
-- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
-- **One pass** for totals + project + activity aggregation (single loop over entries).
-- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
-- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
+Backfill migration:
+```sql
+UPDATE public.profiles p
+SET auth_user_id = a.id
+FROM auth.users a
+WHERE lower(p.email) = lower(a.email)
+  AND p.auth_user_id IS NULL
+  AND lower(p.email) NOT IN (
+    SELECT lower(email) FROM public.profiles
+    GROUP BY lower(email) HAVING count(*) > 1
+  );
+```
 
-### Files to change:
-1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
-2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
-3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
+**Tests**: Run verification count query. Confirm no `profiles.id` changes. Confirm `time_entries` joins intact.
 
-### What NOT to change:
-- `useDashboardDataset.ts` — keep as-is for scope/user filtering
-- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
-- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
-- No new routes or pages
+**Rollback**: `UPDATE public.profiles SET auth_user_id = NULL WHERE auth_user_id IS NOT NULL;` (safe — only clears links, doesn't delete data).
 
-### Implementation order:
-1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
-2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
-3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
+---
+
+### Brick 3.2 — Edge Function: Harden `admin-users` provisioning
+
+**Scope**: Add paginated auth user lookup, correct link types (invite vs recovery), return `link_type`.
+
+**Files** (1):
+- `supabase/functions/admin-users/index.ts`
+
+**Changes**:
+
+1. **Add `findAuthUserByEmail` helper** — paginate `listUsers()` with `page`/`perPage` params until email found or pages exhausted.
+
+2. **Replace `generateInviteLink` with `generateOnboardingLink`** — accepts a boolean `authExists`:
+   - `authExists = false` → `generateLink({ type: 'invite', email })`
+   - `authExists = true` → `generateLink({ type: 'recovery', email })`
+   - Returns `{ action_link, link_type: 'invite' | 'recovery', warning? }`
+
+3. **Action `create`**: Use `findAuthUserByEmail` instead of `listUsers().find()`. Return `link_type`.
+
+4. **Action `provision-invite`**: Check `profile.auth_user_id` first (skip email search if already linked). Use correct link type. Return `link_type`.
+
+5. **Action `send-reset`**: Capture and return `action_link` from recovery `generateLink`. Link `auth_user_id` if missing.
+
+6. **Action `create-with-password`**: Use `findAuthUserByEmail` instead of full list scan.
+
+7. **Action `bulk-provision`**: Paginate initial `listUsers()` to build full map. Return `link_type` per row.
+
+8. **All error responses**: Include `{ action, error, details }`.
+
+**Tests**:
+- Invite new user → `link_type: 'invite'`, link works
+- Provision existing auth user → `link_type: 'recovery'`, link works
+- `send-reset` returns `action_link`
+- No ID rewrites; `time_entries` joins intact
+
+**Rollback**: Revert `admin-users/index.ts`.
+
+---
+
+### Brick 3.3 — Edge Function: Fix `admin-impersonate`
+
+**Scope**: Use roster `auth_user_id` for target lookup. Require JWT auth (not demo header). Return clear error if unprovisioned.
+
+**Files** (1):
+- `supabase/functions/admin-impersonate/index.ts`
+
+**Changes**:
+
+1. **`resolveCallerId`**: Reuse same JWT → roster ID mapping (auth_user_id lookup + legacy fallback). Reject `x-acting-user-id` — impersonation requires real auth.
+
+2. **Role check**: Use roster ID for `user_roles` lookup (already does this if callerId is roster ID).
+
+3. **Target lookup**: Load `profiles` by `id = targetUserId`, read `auth_user_id` and `email`.
+   - If `auth_user_id` is NULL → return `400: "User has no login yet. Provision login first."`
+   - Otherwise generate `magiclink` using `email`.
+
+4. **Return**: `{ url: actionLink, link_type: 'magiclink', targetRosterUserId, supabase_ref }`.
+
+**Tests**:
+- Impersonate linked user → returns working magic link
+- Impersonate unlinked user → clear error message
+- Demo mode caller → 401 (JWT required)
+
+**Rollback**: Revert `admin-impersonate/index.ts`.
+
+---
+
+### Brick 3.4 — UI: Admin Users improvements
+
+**Scope**: Reflect `link_type` in modal title, show `action_link` from `send-reset`, update impersonate error handling.
+
+**Files** (2):
+- `src/components/admin/UsersTable.tsx`
+- `src/contexts/UserContext.tsx`
+
+**Changes**:
+
+1. **`UserContext.tsx`**:
+   - `sendReset` returns response data (currently returns void). Change to return `{ action_link, link_type }`.
+
+2. **`UsersTable.tsx`**:
+   - Track `linkType` state alongside `inviteLinkUrl`.
+   - Modal title: "Invite Link" when `link_type === 'invite'`, "Password Reset Link" when `link_type === 'recovery'`.
+   - `handleSendReset`: capture returned `action_link`, show in modal.
+   - `handleImpersonate`: if error contains "Provision login first", show specific toast guidance.
+
+**Tests**:
+- Provision unlinked user → modal says "Invite Link"
+- Send reset → modal says "Password Reset Link" with copyable URL
+- Impersonate unprovisioned user → clear error toast
+- Auth Status badges update after refresh
+
+**Rollback**: Revert the 2 files.
+
+---
+
+## Implementation Order
+
+```text
+3.1 (SQL backfill) → 3.2 (admin-users hardening) → 3.3 (admin-impersonate) → 3.4 (UI)
+```
+
+Each brick is independently deployable and rollbackable. Total files across all bricks: 4 (1 migration + 2 edge functions + 2 app files, but UsersTable.tsx and UserContext.tsx are in the same brick).
 
