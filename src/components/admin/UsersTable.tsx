@@ -46,6 +46,7 @@ export function UsersTable() {
   // Invite link modal state
   const [inviteLinkDialogOpen, setInviteLinkDialogOpen] = useState(false);
   const [inviteLinkUrl, setInviteLinkUrl] = useState('');
+  const [inviteLinkType, setInviteLinkType] = useState<'invite' | 'recovery' | 'magiclink'>('invite');
   const [linkCopied, setLinkCopied] = useState(false);
 
   const actingHeaders = useMemo(() => {
