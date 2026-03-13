@@ -1,93 +1,80 @@
 
 
-# Correctness Audit + Shared `getDashboardData` Module
+# Plan: Deterministic Invite Links + UI Feedback
 
-## Part 1: Current Architecture Map
+## Problem
 
-### Files where KPIs/charts/tables are calculated
+Currently, `create`, `provision-invite`, and `bulk-provision` actions rely on email delivery (via `inviteUserByEmail` or `generateLink` without capturing the link). The `action_link` from `generateLink` is never returned to the caller, so admins see "Invite sent" but have no fallback if email doesn't arrive.
 
-| File | What it computes | Data source |
-|---|---|---|
-| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
-| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
-| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
-| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
-| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
-| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
-| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
-| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
-| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
-| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
+## Files to Touch (4)
 
-### Supabase queries executed
+1. `supabase/functions/admin-users/index.ts` — return `action_link` from all provisioning actions + add debug `supabase_ref` field
+2. `src/contexts/UserContext.tsx` — return full response data (including `action_link`) from `addUser`, `provisionInvite`, `createWithPassword`
+3. `src/components/admin/UsersTable.tsx` — show invite link modal + auth status badge in table
+4. `src/types/index.ts` — (no change needed, `authUserId` already on User type)
 
-Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
+## Edge Function Changes (`admin-users/index.ts`)
 
-The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
+### Debug field (all responses)
+Add `supabase_ref` extracted from `SUPABASE_URL` to every success response for project verification.
 
-### Where billable/maybe/not billable totals are computed — drift sources
-
-**EmployeeInsights.tsx** computes totals **3 independent times**:
-
-1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
-2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
-3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
-
-**AdminReportsOverview.tsx** has **2 independent computation paths**:
-
-1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
-2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
-3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
-
-**Identified drift sources:**
-- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
-- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
-- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
-- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
-
-## Part 2: Recommended Shared Module
-
-### Approach: `useDashboardData(params)` hook
-
-Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
-
-```text
-src/hooks/useDashboardData.ts  (NEW — ~80 lines)
-
-Input:
-  entries: TimeEntry[]           // already scoped/filtered by caller
-  range: RangeOption
-  users?: User[]                 // for team/dept breakdowns
-  weekStatuses?: WeekStatus[]    // for submission status
-
-Output:
-  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
-  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
-  topActivities: { label, minutes }[]
-  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
-  teamSummary: TeamMemberSummary[]  (if users provided)
-  reconcileResult: ReconcileResult
+### Action: `create` (lines 152-178)
+After invite or fallback magiclink, call `generateLink({ type: 'invite', email })` explicitly and capture `action_link`. Return:
+```json
+{ "success": true, "userId": "<rosterId>", "authUserId": "<authId>", "action_link": "<url>", "supabase_ref": "zmrulycw..." }
 ```
+If `generateLink` fails, still return success but with `action_link: null` and a `warning` field.
 
-### Key design decisions:
-- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
-- **One pass** for totals + project + activity aggregation (single loop over entries).
-- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
-- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
+### Action: `provision-invite` (lines 400-446)
+Same pattern: after invite/magiclink, call `generateLink({ type: 'invite', email })` and return `action_link`.
 
-### Files to change:
-1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
-2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
-3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
+### Action: `create-with-password` (lines 482-528)
+No invite link needed (user has a password). Just add `supabase_ref` to response.
 
-### What NOT to change:
-- `useDashboardDataset.ts` — keep as-is for scope/user filtering
-- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
-- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
-- No new routes or pages
+### Action: `bulk-provision` (lines 532-600)
+For each user, capture `action_link` from `generateLink` and include in results array items.
 
-### Implementation order:
-1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
-2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
-3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
+### No ID rewrites
+All changes only add return fields. No mutations to `profiles.id` or `user_roles.user_id`.
+
+## Context Changes (`UserContext.tsx`)
+
+Currently `addUser`, `provisionInvite` etc. consume the response but only show toasts. Change them to **return the response data** so `UsersTable` can access `action_link`:
+
+- `addUser`: return `result` (contains `action_link`)
+- `provisionInvite`: return `result`
+- `createWithPassword`: return `result`
+- `bulkProvision`: already returns results
+
+Update function signatures in `UserContextType` interface to return the response.
+
+## UI Changes (`UsersTable.tsx`)
+
+### Invite Link Modal
+Add state: `inviteLinkDialogOpen`, `inviteLinkUrl`.
+
+After `addUser` / `provisionInvite` / `createWithPassword` succeeds and response contains `action_link`:
+- Open a modal with title "Invite Link"
+- Read-only input showing the URL
+- "Copy invite link" button (uses `navigator.clipboard.writeText`)
+- Helper text: "Share this link if email delivery is delayed."
+
+### Auth Status Column
+Add a column showing auth provisioning status:
+- `authUserId` exists → green Badge "Provisioned"
+- `authUserId` is undefined/null → gray Badge "Not provisioned"
+
+This uses the `authUserId` field already present on the `User` type and populated by `refreshAllUsers`.
+
+### Error Surfacing
+All handlers already show `toast.error` on failure. The edge function changes ensure errors always include descriptive messages. No additional UI error handling needed.
+
+## Test Steps
+
+1. Click "Invite User" → fill form → submit → response contains `action_link` → modal shows link → copy works
+2. Click Auth dropdown → "Send Invite" → modal shows link for existing roster user
+3. Click Auth dropdown → "Create Login" → success toast (no link modal needed for password flow)
+4. Verify Auth column shows "Provisioned" / "Not provisioned" badges
+5. Open copied `action_link` in incognito → user can set password
+6. Verify `profiles.id` unchanged after all actions
 
