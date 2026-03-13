@@ -107,7 +107,7 @@ export function UsersTable() {
     try {
       const result = await provisionInvite(userId);
       if (result && result.action_link) {
-        showInviteLink(result.action_link);
+        showInviteLink(result.action_link, result.link_type as string);
       }
     } catch { /* toast already shown */ } finally { setActionLoading(null); }
   }, [provisionInvite, showInviteLink]);
