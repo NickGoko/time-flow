@@ -114,8 +114,13 @@ export function UsersTable() {
 
   const handleSendReset = useCallback(async (userId: string) => {
     setActionLoading(userId);
-    try { await sendReset(userId); } catch { /* toast already shown */ } finally { setActionLoading(null); }
-  }, [sendReset]);
+    try {
+      const result = await sendReset(userId);
+      if (result && result.action_link) {
+        showInviteLink(result.action_link, result.link_type as string ?? 'recovery');
+      }
+    } catch { /* toast already shown */ } finally { setActionLoading(null); }
+  }, [sendReset, showInviteLink]);
 
   const handleCreateWithPassword = useCallback(async () => {
     if (!pwdTargetUser || pwdValue.length < 8) {
