@@ -22,7 +22,7 @@ interface UserContextType {
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
   provisionInvite: (userId: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
-  sendReset: (userId: string) => Promise<void>;
+  sendReset: (userId: string) => Promise<{ action_link?: string | null; link_type?: string; [key: string]: unknown } | void>;
   createWithPassword: (userId: string, password: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; action_link?: string | null; error?: string }[]>;
 }
@@ -305,7 +305,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (error) { toast.error('Reset failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Reset failed: ' + result.error); throw new Error(result.error); }
-    toast.success('Password reset email sent.');
+    toast.success('Password reset link generated.');
+    return result as { action_link?: string | null; link_type?: string; [key: string]: unknown };
   }, [actingHeaders]);
 
   const createWithPassword = useCallback(async (userId: string, password: string) => {

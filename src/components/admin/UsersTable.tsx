@@ -46,6 +46,7 @@ export function UsersTable() {
   // Invite link modal state
   const [inviteLinkDialogOpen, setInviteLinkDialogOpen] = useState(false);
   const [inviteLinkUrl, setInviteLinkUrl] = useState('');
+  const [inviteLinkType, setInviteLinkType] = useState<'invite' | 'recovery' | 'magiclink'>('invite');
   const [linkCopied, setLinkCopied] = useState(false);
 
   const actingHeaders = useMemo(() => {
@@ -55,8 +56,9 @@ export function UsersTable() {
     return {};
   }, [currentUser]);
 
-  const showInviteLink = useCallback((link: string) => {
+  const showInviteLink = useCallback((link: string, linkType?: string) => {
     setInviteLinkUrl(link);
+    setInviteLinkType((linkType as 'invite' | 'recovery' | 'magiclink') || 'invite');
     setLinkCopied(false);
     setInviteLinkDialogOpen(true);
   }, []);
@@ -81,7 +83,14 @@ export function UsersTable() {
       });
 
       if (error) { toast.error('Impersonation failed: ' + error.message); return; }
-      if (data?.error) { toast.error('Impersonation failed: ' + data.error); return; }
+      if (data?.error) {
+        if (String(data.error).includes('Provision login first')) {
+          toast.error('This user has no login yet. Use "Send Invite" to provision their account first.');
+        } else {
+          toast.error('Impersonation failed: ' + data.error);
+        }
+        return;
+      }
       if (data?.url) {
         window.open(data.url, '_blank');
         toast.success('Magic link opened in new tab. Use incognito for a clean session.');
@@ -98,15 +107,20 @@ export function UsersTable() {
     try {
       const result = await provisionInvite(userId);
       if (result && result.action_link) {
-        showInviteLink(result.action_link);
+        showInviteLink(result.action_link, result.link_type as string);
       }
     } catch { /* toast already shown */ } finally { setActionLoading(null); }
   }, [provisionInvite, showInviteLink]);
 
   const handleSendReset = useCallback(async (userId: string) => {
     setActionLoading(userId);
-    try { await sendReset(userId); } catch { /* toast already shown */ } finally { setActionLoading(null); }
-  }, [sendReset]);
+    try {
+      const result = await sendReset(userId);
+      if (result && result.action_link) {
+        showInviteLink(result.action_link, result.link_type as string ?? 'recovery');
+      }
+    } catch { /* toast already shown */ } finally { setActionLoading(null); }
+  }, [sendReset, showInviteLink]);
 
   const handleCreateWithPassword = useCallback(async () => {
     if (!pwdTargetUser || pwdValue.length < 8) {
@@ -269,7 +283,7 @@ export function UsersTable() {
     } else {
       const result = await addUser(data);
       if (result && result.action_link) {
-        showInviteLink(result.action_link);
+        showInviteLink(result.action_link, result.link_type as string);
       }
     }
   }, [editingUser, updateUser, addUser, showInviteLink]);
@@ -331,11 +345,13 @@ export function UsersTable() {
       <Dialog open={inviteLinkDialogOpen} onOpenChange={setInviteLinkDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite Link</DialogTitle>
+            <DialogTitle>{inviteLinkType === 'recovery' ? 'Password Reset Link' : 'Invite Link'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Share this link if email delivery is delayed. The user can use it to set their password and sign in.
+              {inviteLinkType === 'recovery'
+                ? 'Share this link so the user can reset their password and sign in.'
+                : 'Share this link if email delivery is delayed. The user can use it to set their password and sign in.'}
             </p>
             <div className="space-y-2">
               <Label htmlFor="invite-link-input">Link</Label>

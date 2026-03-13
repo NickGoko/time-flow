@@ -12,28 +12,40 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
+/** Resolve JWT auth ID → roster profile ID. Rejects x-acting-user-id for impersonation. */
+async function resolveCallerFromJwt(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
-  if (authHeader?.startsWith('Bearer ')) {
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data: { user }, error } = await callerClient.auth.getUser();
-    if (!error && user) {
-      return { callerId: user.id };
-    }
+  if (!authHeader?.startsWith('Bearer ')) {
+    return { callerId: null, error: 'JWT required for impersonation' };
   }
 
-  const actingUserId = req.headers.get('x-acting-user-id');
-  if (actingUserId) {
-    const { data: profile } = await adminClient.from('profiles').select('id').eq('id', actingUserId).single();
-    if (profile) {
-      return { callerId: actingUserId };
-    }
-    return { callerId: null, error: 'Invalid acting user ID' };
+  const callerClient = createClient(supabaseUrl, anonKey, {
+    global: { headers: { Authorization: authHeader } },
+  });
+  const { data: { user }, error } = await callerClient.auth.getUser();
+  if (error || !user) {
+    return { callerId: null, error: 'Invalid or expired JWT' };
   }
 
-  return { callerId: null, error: 'Unauthorized' };
+  const authId = user.id;
+
+  // Primary: lookup by auth_user_id
+  const { data: profile } = await adminClient
+    .from('profiles')
+    .select('id')
+    .eq('auth_user_id', authId)
+    .maybeSingle();
+  if (profile) return { callerId: profile.id };
+
+  // Legacy fallback
+  const { data: legacyProfile } = await adminClient
+    .from('profiles')
+    .select('id')
+    .eq('id', authId)
+    .maybeSingle();
+  if (legacyProfile) return { callerId: legacyProfile.id };
+
+  return { callerId: null, error: 'No roster profile linked to this auth account' };
 }
 
 Deno.serve(async (req) => {
@@ -46,13 +58,15 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const supabaseRef = new URL(supabaseUrl).hostname.split('.')[0];
 
-    const { callerId, error: idError } = await resolveCallerId(req, supabaseUrl, anonKey, adminClient);
+    // JWT-only auth for impersonation (no demo header)
+    const { callerId, error: idError } = await resolveCallerFromJwt(req, supabaseUrl, anonKey, adminClient);
     if (!callerId) {
       return jsonResponse({ error: idError ?? 'Unauthorized' }, 401);
     }
 
-    // Verify super_admin role (not just admin)
+    // Verify super_admin role
     const { data: roleRow } = await adminClient
       .from('user_roles')
       .select('role')
@@ -69,15 +83,14 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'targetUserId is required' }, 400);
     }
 
-    // Prevent self-impersonation
     if (targetUserId === callerId) {
       return jsonResponse({ error: 'Cannot impersonate yourself' }, 400);
     }
 
-    // Look up target user email
+    // Look up target profile by roster ID
     const { data: targetProfile } = await adminClient
       .from('profiles')
-      .select('email')
+      .select('id, email, auth_user_id')
       .eq('id', targetUserId)
       .single();
 
@@ -85,22 +98,27 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: 'Target user not found' }, 404);
     }
 
-    // Generate magic link for the target user
+    // Require auth_user_id to be linked
+    if (!targetProfile.auth_user_id) {
+      return jsonResponse({ error: 'User has no login yet. Provision login first.' }, 400);
+    }
+
+    // Generate magic link using email
     const { data: linkData, error: linkError } = await adminClient.auth.admin.generateLink({
       type: 'magiclink',
       email: targetProfile.email,
     });
 
-    if (linkError || !linkData) {
+    if (linkError || !linkData?.properties?.action_link) {
       return jsonResponse({ error: linkError?.message ?? 'Failed to generate link' }, 500);
     }
 
-    const actionLink = linkData.properties?.action_link;
-    if (!actionLink) {
-      return jsonResponse({ error: 'No action link returned' }, 500);
-    }
-
-    return jsonResponse({ url: actionLink });
+    return jsonResponse({
+      url: linkData.properties.action_link,
+      link_type: 'magiclink',
+      targetRosterUserId: targetUserId,
+      supabase_ref: supabaseRef,
+    });
   } catch (err) {
     return jsonResponse({ error: String(err) }, 500);
   }
