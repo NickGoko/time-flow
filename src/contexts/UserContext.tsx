@@ -305,7 +305,8 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (error) { toast.error('Reset failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Reset failed: ' + result.error); throw new Error(result.error); }
-    toast.success('Password reset email sent.');
+    toast.success('Password reset link generated.');
+    return result as { action_link?: string | null; link_type?: string; [key: string]: unknown };
   }, [actingHeaders]);
 
   const createWithPassword = useCallback(async (userId: string, password: string) => {
