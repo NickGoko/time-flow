@@ -345,11 +345,13 @@ export function UsersTable() {
       <Dialog open={inviteLinkDialogOpen} onOpenChange={setInviteLinkDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Invite Link</DialogTitle>
+            <DialogTitle>{inviteLinkType === 'recovery' ? 'Password Reset Link' : 'Invite Link'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <p className="text-sm text-muted-foreground">
-              Share this link if email delivery is delayed. The user can use it to set their password and sign in.
+              {inviteLinkType === 'recovery'
+                ? 'Share this link so the user can reset their password and sign in.'
+                : 'Share this link if email delivery is delayed. The user can use it to set their password and sign in.'}
             </p>
             <div className="space-y-2">
               <Label htmlFor="invite-link-input">Link</Label>
