@@ -56,8 +56,9 @@ export function UsersTable() {
     return {};
   }, [currentUser]);
 
-  const showInviteLink = useCallback((link: string) => {
+  const showInviteLink = useCallback((link: string, linkType?: string) => {
     setInviteLinkUrl(link);
+    setInviteLinkType((linkType as 'invite' | 'recovery' | 'magiclink') || 'invite');
     setLinkCopied(false);
     setInviteLinkDialogOpen(true);
   }, []);
