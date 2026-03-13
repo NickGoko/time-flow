@@ -293,8 +293,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (error) { toast.error('Invite failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Invite failed: ' + result.error); throw new Error(result.error); }
-    toast.success('Invite sent successfully.');
+    toast.success('Invite created.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const sendReset = useCallback(async (userId: string) => {
