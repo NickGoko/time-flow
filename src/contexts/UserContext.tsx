@@ -230,8 +230,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(result.error);
     }
 
-    toast.success('User invited successfully. They will receive an email to set their password.');
+    toast.success('User invited successfully.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => {
