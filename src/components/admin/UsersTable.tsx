@@ -83,7 +83,14 @@ export function UsersTable() {
       });
 
       if (error) { toast.error('Impersonation failed: ' + error.message); return; }
-      if (data?.error) { toast.error('Impersonation failed: ' + data.error); return; }
+      if (data?.error) {
+        if (String(data.error).includes('Provision login first')) {
+          toast.error('This user has no login yet. Use "Send Invite" to provision their account first.');
+        } else {
+          toast.error('Impersonation failed: ' + data.error);
+        }
+        return;
+      }
       if (data?.url) {
         window.open(data.url, '_blank');
         toast.success('Magic link opened in new tab. Use incognito for a clean session.');
