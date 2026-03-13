@@ -22,8 +22,6 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
     const { data: { user }, error } = await callerClient.auth.getUser();
     if (!error && user) {
       const authId = user.id;
-      // Map auth user → roster profile ID
-      // Try auth_user_id first, then fallback to id (legacy rewritten users)
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')
@@ -34,7 +32,6 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
         return { callerId: profile.id };
       }
 
-      // Legacy fallback: profiles.id == auth id (from before non-destructive linking)
       const { data: legacyProfile } = await adminClient
         .from('profiles')
         .select('id')
@@ -52,7 +49,6 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
   // Fallback: x-acting-user-id header (demo mode)
   const actingUserId = req.headers.get('x-acting-user-id');
   if (actingUserId) {
-    // Verify user exists in profiles
     const { data: profile } = await adminClient.from('profiles').select('id').eq('id', actingUserId).single();
     if (profile) {
       return { callerId: actingUserId };
@@ -61,6 +57,30 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
   }
 
   return { callerId: null, error: 'Unauthorized' };
+}
+
+/** Generate an invite link and return the action_link URL. Returns null on failure. */
+async function generateInviteLink(adminClient: any, email: string): Promise<{ action_link: string | null; warning?: string }> {
+  try {
+    const { data, error } = await adminClient.auth.admin.generateLink({
+      type: 'invite',
+      email,
+    });
+    if (error || !data?.properties?.action_link) {
+      // Fallback: try magiclink
+      const { data: mlData, error: mlError } = await adminClient.auth.admin.generateLink({
+        type: 'magiclink',
+        email,
+      });
+      if (mlError || !mlData?.properties?.action_link) {
+        return { action_link: null, warning: `generateLink failed: ${error?.message ?? mlError?.message ?? 'unknown'}` };
+      }
+      return { action_link: mlData.properties.action_link };
+    }
+    return { action_link: data.properties.action_link };
+  } catch (err) {
+    return { action_link: null, warning: `generateLink exception: ${String(err)}` };
+  }
 }
 
 Deno.serve(async (req) => {
@@ -73,6 +93,9 @@ Deno.serve(async (req) => {
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+    // Debug ref extracted from URL
+    const supabaseRef = new URL(supabaseUrl).hostname.split('.')[0];
 
     // Resolve caller identity (JWT or x-acting-user-id) — always returns roster profile ID
     const { callerId, error: idError } = await resolveCallerId(req, supabaseUrl, anonKey, adminClient);
@@ -115,7 +138,6 @@ Deno.serve(async (req) => {
 
       if (existing) {
         rosterId = existing.id;
-        // Update profile fields if provided
         const profileUpdates: Record<string, unknown> = {};
         if (name) profileUpdates.name = name;
         if (departmentId) profileUpdates.department_id = departmentId;
@@ -165,8 +187,6 @@ Deno.serve(async (req) => {
         );
         if (existingAuth) {
           authId = existingAuth.id;
-          // Send magiclink for existing user
-          await adminClient.auth.admin.generateLink({ type: 'magiclink', email: emailLower });
         }
       }
 
@@ -175,7 +195,17 @@ Deno.serve(async (req) => {
         await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', rosterId);
       }
 
-      return jsonResponse({ success: true, userId: rosterId, authUserId: authId });
+      // 5. Generate deterministic invite link
+      const { action_link, warning } = await generateInviteLink(adminClient, emailLower);
+
+      return jsonResponse({
+        success: true,
+        userId: rosterId,
+        authUserId: authId,
+        action_link,
+        ...(warning ? { warning } : {}),
+        supabase_ref: supabaseRef,
+      });
     }
 
     // ── Action: update ───────────────────────────────────────────
@@ -260,7 +290,6 @@ Deno.serve(async (req) => {
       const { userId } = body;
       if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
 
-      // Prevent self-deactivation
       if (userId === callerId) {
         return jsonResponse({ error: 'Cannot deactivate yourself' }, 400);
       }
@@ -305,7 +334,6 @@ Deno.serve(async (req) => {
 
           const email = u.email.trim().toLowerCase();
 
-          // 1. Check if profile exists by email
           const { data: existing } = await adminClient
             .from('profiles')
             .select('id')
@@ -315,7 +343,6 @@ Deno.serve(async (req) => {
           let profileId: string;
 
           if (existing) {
-            // 2. UPDATE existing profile
             profileId = existing.id;
             const updates: Record<string, unknown> = {};
             if (u.name !== undefined) updates.name = u.name;
@@ -336,7 +363,6 @@ Deno.serve(async (req) => {
             }
             updated++;
           } else {
-            // 3. INSERT new profile with generated UUID
             profileId = crypto.randomUUID();
             const { error: insErr } = await adminClient
               .from('profiles')
@@ -356,7 +382,6 @@ Deno.serve(async (req) => {
             created++;
           }
 
-          // 4. Upsert user_roles (one role per user)
           const appRole = u.appRole || 'employee';
           const { error: roleUpsertErr } = await adminClient
             .from('user_roles')
@@ -368,9 +393,7 @@ Deno.serve(async (req) => {
             errors.push(`Role upsert failed for ${email}: ${roleUpsertErr.message}`);
           }
 
-          // 5. Upsert user_department_scope (managed departments for HODs)
           if (Array.isArray(u.managedDepartments) && u.managedDepartments.length > 0) {
-            // Delete existing scopes then insert new ones
             await adminClient
               .from('user_department_scope')
               .delete()
@@ -401,7 +424,6 @@ Deno.serve(async (req) => {
       const { userId } = body;
       if (!userId) return jsonResponse({ error: 'userId is required' }, 400);
 
-      // Look up profile by roster ID
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id, email, name, auth_user_id')
@@ -420,19 +442,13 @@ Deno.serve(async (req) => {
 
       if (existingAuthUser) {
         authId = existingAuthUser.id;
-        // Re-send via magiclink (invite type fails if user already exists)
-        const { error: linkErr } = await adminClient.auth.admin.generateLink({
-          type: 'magiclink',
-          email: profile.email,
-        });
-        if (linkErr) return jsonResponse({ error: linkErr.message }, 400);
       } else {
         // Create new auth user via invite
         const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
           profile.email,
           { data: { full_name: profile.name } }
         );
-        if (inviteErr) return jsonResponse({ error: inviteErr.message }, 400);
+        if (inviteErr) return jsonResponse({ error: inviteErr.message, action: 'provision-invite', details: 'inviteUserByEmail failed' }, 400);
         authId = inviteData.user.id;
       }
 
@@ -442,7 +458,16 @@ Deno.serve(async (req) => {
         .update({ auth_user_id: authId })
         .eq('id', profile.id);
 
-      return jsonResponse({ success: true, authUserId: authId });
+      // Generate deterministic invite link
+      const { action_link, warning } = await generateInviteLink(adminClient, profile.email);
+
+      return jsonResponse({
+        success: true,
+        authUserId: authId,
+        action_link,
+        ...(warning ? { warning } : {}),
+        supabase_ref: supabaseRef,
+      });
     }
 
     // ── Action: send-reset ──────────────────────────────────────
@@ -458,7 +483,6 @@ Deno.serve(async (req) => {
 
       if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
 
-      // Check auth user exists by email
       const { data: listData } = await adminClient.auth.admin.listUsers();
       const authUser = listData?.users?.find(
         (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
@@ -480,7 +504,6 @@ Deno.serve(async (req) => {
 
     // ── Action: create-with-password (super_admin only) ─────────
     if (action === 'create-with-password') {
-      // Require super_admin
       if (roleRow.role !== 'super_admin') {
         return jsonResponse({ error: 'Forbidden: super_admin role required' }, 403);
       }
@@ -499,7 +522,6 @@ Deno.serve(async (req) => {
 
       if (!profile) return jsonResponse({ error: 'Profile not found' }, 404);
 
-      // Check if auth user already exists
       const { data: listData } = await adminClient.auth.admin.listUsers();
       const existingAuthUser = listData?.users?.find(
         (u: { email?: string }) => u.email?.toLowerCase() === profile.email.toLowerCase()
@@ -518,14 +540,13 @@ Deno.serve(async (req) => {
 
       if (createErr) return jsonResponse({ error: createErr.message }, 400);
 
-      // Link auth_user_id (only set, never mutate profiles.id)
       const authId = createData.user.id;
       await adminClient
         .from('profiles')
         .update({ auth_user_id: authId })
         .eq('id', profile.id);
 
-      return jsonResponse({ success: true, authUserId: authId });
+      return jsonResponse({ success: true, authUserId: authId, supabase_ref: supabaseRef });
     }
 
     // ── Action: bulk-provision ──────────────────────────────────
@@ -535,14 +556,13 @@ Deno.serve(async (req) => {
         return jsonResponse({ error: 'userIds array is required' }, 400);
       }
 
-      // Fetch all auth users once to avoid repeated listUsers calls
       const { data: listData } = await adminClient.auth.admin.listUsers();
       const authUsersByEmail = new Map<string, { id: string }>();
       listData?.users?.forEach((u: { id: string; email?: string }) => {
         if (u.email) authUsersByEmail.set(u.email.toLowerCase(), { id: u.id });
       });
 
-      const results: { userId: string; email: string; status: string; error?: string }[] = [];
+      const results: { userId: string; email: string; status: string; action_link?: string | null; error?: string }[] = [];
 
       for (const uid of userIds) {
         try {
@@ -563,20 +583,8 @@ Deno.serve(async (req) => {
 
           if (existingAuth) {
             authId = existingAuth.id;
-            // Link auth_user_id
             await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
-            // Re-invite
-            const { error: linkErr } = await adminClient.auth.admin.generateLink({
-              type: 'magiclink',
-              email: profile.email,
-            });
-            if (linkErr) {
-              results.push({ userId: uid, email: profile.email, status: 'error', error: linkErr.message });
-            } else {
-              results.push({ userId: uid, email: profile.email, status: 're-invited' });
-            }
           } else {
-            // New invite
             const { data: inviteData, error: inviteErr } = await adminClient.auth.admin.inviteUserByEmail(
               profile.email,
               { data: { full_name: profile.name } }
@@ -586,18 +594,24 @@ Deno.serve(async (req) => {
               continue;
             }
             authId = inviteData.user.id;
-            // Link auth_user_id (only set, never mutate profiles.id)
             await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
-            // Cache for subsequent lookups
             authUsersByEmail.set(emailLower, { id: authId });
-            results.push({ userId: uid, email: profile.email, status: 'invited' });
           }
+
+          // Generate deterministic link for each user
+          const { action_link } = await generateInviteLink(adminClient, profile.email);
+          results.push({
+            userId: uid,
+            email: profile.email,
+            status: existingAuth ? 're-invited' : 'invited',
+            action_link,
+          });
         } catch (err) {
           results.push({ userId: uid, email: '', status: 'error', error: String(err) });
         }
       }
 
-      return jsonResponse({ results });
+      return jsonResponse({ results, supabase_ref: supabaseRef });
     }
 
     return jsonResponse({ error: 'Unknown action' }, 400);

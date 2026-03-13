@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
-import { LogIn, Mail, KeyRound, UserPlus, MoreHorizontal } from 'lucide-react';
+import { LogIn, Mail, KeyRound, UserPlus, MoreHorizontal, Copy, CheckCircle2 } from 'lucide-react';
 import { AUTH_ENABLED } from '@/lib/devMode';
 import {
   DropdownMenu,
@@ -43,12 +43,34 @@ export function UsersTable() {
   const [pwdTargetUser, setPwdTargetUser] = useState<User | null>(null);
   const [pwdValue, setPwdValue] = useState('');
 
+  // Invite link modal state
+  const [inviteLinkDialogOpen, setInviteLinkDialogOpen] = useState(false);
+  const [inviteLinkUrl, setInviteLinkUrl] = useState('');
+  const [linkCopied, setLinkCopied] = useState(false);
+
   const actingHeaders = useMemo(() => {
     if (!AUTH_ENABLED && currentUser) {
       return { 'x-acting-user-id': currentUser.id };
     }
     return {};
   }, [currentUser]);
+
+  const showInviteLink = useCallback((link: string) => {
+    setInviteLinkUrl(link);
+    setLinkCopied(false);
+    setInviteLinkDialogOpen(true);
+  }, []);
+
+  const handleCopyLink = useCallback(async () => {
+    try {
+      await navigator.clipboard.writeText(inviteLinkUrl);
+      setLinkCopied(true);
+      toast.success('Invite link copied to clipboard');
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      toast.error('Failed to copy link');
+    }
+  }, [inviteLinkUrl]);
 
   const handleImpersonate = useCallback(async (userId: string) => {
     setImpersonating(userId);
@@ -73,8 +95,13 @@ export function UsersTable() {
 
   const handleProvisionInvite = useCallback(async (userId: string) => {
     setActionLoading(userId);
-    try { await provisionInvite(userId); } catch { /* toast already shown */ } finally { setActionLoading(null); }
-  }, [provisionInvite]);
+    try {
+      const result = await provisionInvite(userId);
+      if (result && result.action_link) {
+        showInviteLink(result.action_link);
+      }
+    } catch { /* toast already shown */ } finally { setActionLoading(null); }
+  }, [provisionInvite, showInviteLink]);
 
   const handleSendReset = useCallback(async (userId: string) => {
     setActionLoading(userId);
@@ -139,6 +166,20 @@ export function UsersTable() {
       header: 'Weekly Hours',
       render: (row) => String(row.weeklyExpectedHours),
     },
+    // Auth status column
+    ...(isAdmin
+      ? [
+          {
+            key: 'authUserId' as keyof User,
+            header: 'Auth Status',
+            render: (row: User) => (
+              <Badge variant={row.authUserId ? 'default' : 'outline'} className={row.authUserId ? 'bg-emerald-600 hover:bg-emerald-600/80' : ''}>
+                {row.authUserId ? 'Provisioned' : 'Not provisioned'}
+              </Badge>
+            ),
+          },
+        ]
+      : []),
     // Auth provisioning actions column (admin/super_admin only)
     ...(isAdmin
       ? [
@@ -184,7 +225,7 @@ export function UsersTable() {
     ...(isSuperAdmin
       ? [
           {
-            key: 'avatarUrl' as keyof User, // unique key to avoid duplicate 'id' key
+            key: 'avatarUrl' as keyof User,
             header: '',
             render: (row: User) =>
               row.id !== currentUser?.id ? (
@@ -226,9 +267,12 @@ export function UsersTable() {
       const { managedDepartments, reason, ...updates } = data;
       await updateUser(editingUser.id, updates, reason, managedDepartments);
     } else {
-      await addUser(data);
+      const result = await addUser(data);
+      if (result && result.action_link) {
+        showInviteLink(result.action_link);
+      }
     }
-  }, [editingUser, updateUser, addUser]);
+  }, [editingUser, updateUser, addUser, showInviteLink]);
 
   return (
     <>
@@ -279,6 +323,39 @@ export function UsersTable() {
             >
               {actionLoading === pwdTargetUser?.id ? 'Creating…' : 'Create Login'}
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invite link modal */}
+      <Dialog open={inviteLinkDialogOpen} onOpenChange={setInviteLinkDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Invite Link</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Share this link if email delivery is delayed. The user can use it to set their password and sign in.
+            </p>
+            <div className="space-y-2">
+              <Label htmlFor="invite-link-input">Link</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="invite-link-input"
+                  readOnly
+                  value={inviteLinkUrl}
+                  className="text-xs font-mono"
+                  onClick={(e) => (e.target as HTMLInputElement).select()}
+                />
+                <Button variant="outline" size="sm" onClick={handleCopyLink} className="shrink-0">
+                  {linkCopied ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : <Copy className="h-4 w-4" />}
+                  {linkCopied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInviteLinkDialogOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

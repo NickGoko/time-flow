@@ -18,13 +18,13 @@ interface UserContextType {
   isLoading: boolean;
   isDevMode: boolean;
   notProvisioned: boolean;
-  addUser: (data: Omit<User, 'id'>) => Promise<void>;
+  addUser: (data: Omit<User, 'id'>) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
-  provisionInvite: (userId: string) => Promise<void>;
+  provisionInvite: (userId: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   sendReset: (userId: string) => Promise<void>;
-  createWithPassword: (userId: string, password: string) => Promise<void>;
-  bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; error?: string }[]>;
+  createWithPassword: (userId: string, password: string) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
+  bulkProvision: (userIds: string[]) => Promise<{ userId: string; email: string; status: string; action_link?: string | null; error?: string }[]>;
 }
 
 const UserContext = createContext<UserContextType | undefined>(undefined);
@@ -230,8 +230,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
       throw new Error(result.error);
     }
 
-    toast.success('User invited successfully. They will receive an email to set their password.');
+    toast.success('User invited successfully.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => {
@@ -292,8 +293,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
     });
     if (error) { toast.error('Invite failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Invite failed: ' + result.error); throw new Error(result.error); }
-    toast.success('Invite sent successfully.');
+    toast.success('Invite created.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const sendReset = useCallback(async (userId: string) => {
@@ -315,6 +317,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (result?.error) { toast.error('Create login failed: ' + result.error); throw new Error(result.error); }
     toast.success('Login created. User can now sign in.');
     await refreshAllUsers();
+    return result as { action_link?: string | null; [key: string]: unknown };
   }, [refreshAllUsers, actingHeaders]);
 
   const bulkProvision = useCallback(async (userIds: string[]) => {
