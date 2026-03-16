@@ -50,7 +50,7 @@ export function UsersTable() {
   const [linkCopied, setLinkCopied] = useState(false);
 
   const actingHeaders = useMemo(() => {
-    if (!AUTH_ENABLED && currentUser) {
+    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
       return { 'x-acting-user-id': currentUser.id };
     }
     return {};
