@@ -1,32 +1,30 @@
 
-# Slice 4: Environment Policy + Production Hardening
+# Slice 5: Tiny-Cohort Auth Pilot
 
-## Status: Brick 4.1 + 4.2 IMPLEMENTED | 4.3 SKIPPED | 4.4 DEFERRED
+## Status: ROLE UPGRADES DONE | AUTH ACTIVATION PENDING BUILD SECRET
 
-### Files changed
-1. `src/lib/devMode.ts` — env-derived policy (APP_ENV, DEMO_MODE_ALLOWED, AUTH_ENABLED)
-2. `src/contexts/UserContext.tsx` — gated actingHeaders on DEMO_MODE_ALLOWED
-3. `src/components/admin/UsersTable.tsx` — same header gating
-4. `src/components/UserSelector.tsx` — demo selector gated on DEMO_MODE_ALLOWED
-5. `src/pages/admin/AdminImportExport.tsx` — same header gating
-6. `supabase/functions/admin-users/index.ts` — rejects x-acting-user-id when APP_ENV=prod
+### What was done
+1. **SQL migration**: Both target users upgraded to `super_admin`:
+   - `ngo@growthafrica.com` (`cca0759d-...`): employee → super_admin ✅
+   - `it@growthafrica.com` (`d42a2ddb-...`): admin → super_admin ✅
+2. **Runtime secret**: `VITE_AUTH_ENABLED` added (but this is a VITE_ var — needs Build Secret)
 
-### Environment variables
-- `VITE_APP_ENV` → 'dev' (default) | 'staging' | 'prod'
-- `VITE_AUTH_ENABLED` → optional override for non-prod auth
-- `APP_ENV` → Edge Function secret (defaults to 'dev')
+### Pending
+- User must add `VITE_AUTH_ENABLED=true` as a **Build Secret** (Workspace Settings → Build Secrets)
+- Once set, rebuild will activate auth requirement
 
-### Behavior matrix
-| APP_ENV | Demo selector | x-acting-user-id (frontend) | x-acting-user-id (edge fn) | Auth required |
-|---------|--------------|----------------------------|---------------------------|---------------|
-| dev     | ✅ visible    | ✅ sent                     | ✅ accepted                | ❌ optional    |
-| staging | ✅ visible    | ✅ sent                     | ✅ accepted                | ❌ optional*   |
-| prod    | ❌ hidden     | ❌ never sent               | ❌ rejected (403)          | ✅ required    |
+### Verification checklist (run after build secret is active)
+- [ ] App redirects to `/sign-in`
+- [ ] ngo@growthafrica.com signs in → `super_admin` role, admin dashboard
+- [ ] it@growthafrica.com signs in → `super_admin` role, admin dashboard
+- [ ] Impersonation works from authenticated super-admin session
+- [ ] Demo user selector still visible (APP_ENV remains `dev`)
+- [ ] profiles.id unchanged for both accounts
+- [ ] user_roles.user_id matches profiles.id
 
-*staging uses AUTH_ENABLED=false by default; set VITE_AUTH_ENABLED=true to enable
-
-### Brick 4.3 — SKIPPED
-verify_jwt must stay false per signing-keys constraint. JWT validation happens in code.
-
-### Brick 4.4 — DEFERRED
-Query-layer scope enforcement deferred until seed data → Supabase migration.
+### Rollback
+```sql
+UPDATE public.user_roles SET role = 'employee' WHERE user_id = 'cca0759d-ebc9-4fa5-9fd0-e61e51c2ef65';
+UPDATE public.user_roles SET role = 'admin' WHERE user_id = 'd42a2ddb-05a4-4051-bbfe-8614e6da4d21';
+```
+Remove `VITE_AUTH_ENABLED` build secret.
