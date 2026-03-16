@@ -16,12 +16,9 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.replace('Bearer ', '');
-    const callerClient = createClient(supabaseUrl, anonKey, {
-      global: { headers: { Authorization: authHeader } },
-    });
-    const { data, error } = await callerClient.auth.getClaims(token);
-    if (!error && data?.claims?.sub) {
-      const authId = data.claims.sub as string;
+    const { data: userData, error } = await adminClient.auth.getUser(token);
+    if (!error && userData?.user?.id) {
+      const authId = userData.user.id as string;
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')

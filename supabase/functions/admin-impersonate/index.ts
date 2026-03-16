@@ -20,15 +20,12 @@ async function resolveCallerFromJwt(req: Request, supabaseUrl: string, anonKey: 
   }
 
   const token = authHeader.replace('Bearer ', '');
-  const callerClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
-  });
-  const { data, error } = await callerClient.auth.getClaims(token);
-  if (error || !data?.claims?.sub) {
+  const { data: userData, error } = await adminClient.auth.getUser(token);
+  if (error || !userData?.user?.id) {
     return { callerId: null, error: 'Invalid or expired JWT' };
   }
 
-  const authId = data.claims.sub as string;
+  const authId = userData.user.id as string;
 
   // Primary: lookup by auth_user_id
   const { data: profile } = await adminClient
