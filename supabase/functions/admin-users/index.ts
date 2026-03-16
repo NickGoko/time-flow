@@ -15,12 +15,13 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
 async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.replace('Bearer ', '');
     const callerClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
-    const { data: { user }, error } = await callerClient.auth.getUser();
-    if (!error && user) {
-      const authId = user.id;
+    const { data, error } = await callerClient.auth.getClaims(token);
+    if (!error && data?.claims?.sub) {
+      const authId = data.claims.sub as string;
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')
