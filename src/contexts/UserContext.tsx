@@ -3,7 +3,7 @@ import { User, AppRole } from '@/types';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import type { Session } from '@supabase/supabase-js';
-import { AUTH_ENABLED, DEV_MODE, DEMO_MODE } from '@/lib/devMode';
+import { AUTH_ENABLED, DEV_MODE, DEMO_MODE, DEMO_MODE_ALLOWED } from '@/lib/devMode';
 
 interface UserContextType {
   currentUser: User | null;
