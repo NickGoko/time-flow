@@ -27,7 +27,7 @@ export function UserSelector() {
   };
 
   // Demo mode: show a user-switcher dropdown
-  if (DEMO_MODE && !AUTH_ENABLED) {
+  if (DEMO_MODE_ALLOWED && !AUTH_ENABLED) {
     return (
       <div className="flex items-center gap-2">
         <Avatar className="h-7 w-7">

@@ -130,7 +130,7 @@ export default function AdminImportExport() {
     setImporting(true);
 
     const headers: Record<string, string> = {};
-    if (!AUTH_ENABLED && currentUser) {
+    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
       headers['x-acting-user-id'] = currentUser.id;
     }
 

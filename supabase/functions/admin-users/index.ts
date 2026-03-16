@@ -39,8 +39,14 @@ async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: strin
     }
   }
 
+  // Demo header fallback — blocked in production
   const actingUserId = req.headers.get('x-acting-user-id');
   if (actingUserId) {
+    const appEnv = Deno.env.get('APP_ENV') || 'dev';
+    const demoAllowed = appEnv !== 'prod';
+    if (!demoAllowed) {
+      return { callerId: null, error: 'Demo mode disabled in production' };
+    }
     const { data: profile } = await adminClient.from('profiles').select('id').eq('id', actingUserId).single();
     if (profile) return { callerId: actingUserId };
     return { callerId: null, error: 'Invalid acting user ID' };

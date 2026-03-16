@@ -201,7 +201,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // ── Admin user management via Edge Function ───────────────────
 
   const actingHeaders = useMemo(() => {
-    if (!AUTH_ENABLED && currentUser) {
+    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
       return { 'x-acting-user-id': currentUser.id };
     }
     return {};
