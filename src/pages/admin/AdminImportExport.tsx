@@ -11,7 +11,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useCurrentUser } from '@/contexts/UserContext';
 import { useReferenceData } from '@/contexts/ReferenceDataContext';
-import { AUTH_ENABLED } from '@/lib/devMode';
+import { AUTH_ENABLED, DEMO_MODE_ALLOWED } from '@/lib/devMode';
 import { toast } from 'sonner';
 import type { AppRole } from '@/types';
 import { Upload, FileText, CheckCircle2, AlertCircle, Users } from 'lucide-react';
