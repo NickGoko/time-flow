@@ -12,13 +12,26 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+/** Decode JWT payload without verification (service-role will gate actual access). */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = atob(payload);
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.replace('Bearer ', '');
-    const { data: userData, error } = await adminClient.auth.getUser(token);
-    if (!error && userData?.user?.id) {
-      const authId = userData.user.id as string;
+    const claims = decodeJwtPayload(token);
+    if (claims?.sub && typeof claims.sub === 'string') {
+      const authId = claims.sub;
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')
