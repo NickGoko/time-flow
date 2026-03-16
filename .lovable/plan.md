@@ -1,93 +1,145 @@
 
 
-# Correctness Audit + Shared `getDashboardData` Module
+# Slice 4: Environment Policy + Production Hardening
 
-## Part 1: Current Architecture Map
+## A) Current State
 
-### Files where KPIs/charts/tables are calculated
+### Frontend env flags (`src/lib/devMode.ts`)
+- `DEV_MODE` — from `VITE_DEV_MODE` env var
+- `AUTH_ENABLED = false` — hardcoded
+- `DEMO_MODE = true` — hardcoded
 
-| File | What it computes | Data source |
-|---|---|---|
-| `src/pages/EmployeeInsights.tsx` | summary totals, topProjects, topActivities, 6-week trend chart, recent history | `getOwnEntries()` from `TimeEntriesContext` (in-memory seed data) |
-| `src/pages/AdminReportsOverview.tsx` | Delegates to `useDashboardDataset` hook + `deriveMetrics`/`deriveOperationalInsights` from `reportsMockData.ts` | `getAllEntries()` from `TimeEntriesContext` |
-| `src/hooks/useDashboardDataset.ts` | Scoped entries/users/weekStatuses, date window, metrics, insights, blockedByCapCount | `getAllEntries()` + `weekStatuses` + `validationEvents` from context |
-| `src/data/reportsMockData.ts` | `deriveMetrics`, `deriveDailyBreakdown`, `deriveProjectBreakdown`, `deriveDepartmentBreakdown`, `deriveTeamSummary`, `deriveOperationalInsights`, cohort helpers | Pure functions operating on `TimeEntry[]` |
-| `src/components/admin/WeeklyChart.tsx` | Daily breakdown by status/project/department (own date window calculation duplicating `useDashboardDataset`) | Receives `entries` as prop or falls back to `getAllEntries()` |
-| `src/components/admin/TeamSummaryTable.tsx` | Team summary rows via `deriveTeamSummary` | Receives `entries`, `users`, `weekStatuses` as props |
-| `src/components/admin/MetricCards.tsx` | Pure display — receives `metrics` | Props only |
-| `src/components/admin/CohortWidget.tsx` | Cohort buckets via `deriveCohortSummaries` + `buildCohortBuckets` | Receives `entries`, `users`, `weekStart`, `days` as props |
-| `src/components/PersonalDashboard.tsx` | Weekly KPI cards (logged, remaining, billable rate, week status) | `getWeekSummary()` from context |
-| `src/lib/reconcile.ts` | Cross-check billing mix + entry sum vs KPI | Called from both pages |
+### Where `x-acting-user-id` is sent from frontend
+- `src/contexts/UserContext.tsx` (actingHeaders)
+- `src/components/admin/UsersTable.tsx` (actingHeaders)
+- `src/pages/admin/AdminImportExport.tsx`
 
-### Supabase queries executed
+### Edge functions accepting demo header
+- `admin-users`: accepts `x-acting-user-id` fallback when JWT absent
+- `admin-impersonate`: JWT-only (already hardened)
 
-Both pages currently use **in-memory seed data** — no Supabase queries are executed for dashboard/report calculations. The `TimeEntriesContext` loads `seedTimeEntries` into state. All filtering and aggregation happens client-side.
+### `verify_jwt` config (`supabase/config.toml`)
+Both `admin-users` and `admin-impersonate` have `verify_jwt = false`.
 
-The network requests visible are reference data loads (profiles, departments, projects, phases, activity_types, etc.) from Supabase tables — NOT time entry queries. The `time_entries_enriched` view exists but is not queried by either dashboard page.
+Per project knowledge (`disable-jwt-edge-functions`), **this project uses signing-keys**, so `verify_jwt = true` doesn't work. Must keep `verify_jwt = false` and validate JWTs in code. This means **Brick 4.3 is a no-op** — the current approach is already correct per platform constraints.
 
-### Where billable/maybe/not billable totals are computed — drift sources
+### Dashboard scope enforcement (`useDashboardDataset.ts`)
+- Scope filtering is **UI-only**: `scope` dropdown options are hidden based on `appRole`, but `getAllEntries()` returns **all entries** from seed data regardless.
+- `TimeEntriesContext.getAllEntries()` returns the full dataset. `getOwnEntries()` filters by `currentUser.id`.
+- The `scopedEntries` filter in `useDashboardDataset` works correctly IF `allUsers` is already scoped — but `allUsers` is the full active user list. So any user with access to `/admin` routes can see all data if they pass the `AdminGuard` (which checks `isAdmin` including `leadership`).
+- RLS is not currently enforced since data comes from seed/local state, not direct Supabase queries.
 
-**EmployeeInsights.tsx** computes totals **3 independent times**:
+---
 
-1. **`summary` useMemo (line 112-122)**: Iterates `rangeEntries`, bucketing by `billableStatus`. Single-pass, correct.
-2. **`topProjects` useMemo (line 131-155)**: Iterates `rangeEntries` again, only tracks `billableMinutes` (not maybe/not). Could drift from summary if entry filtering diverges.
-3. **`chartData` useMemo (line 190-233)**: Iterates `ownEntries` (not `rangeEntries`!) with its own category+project filter. Uses a **different date range** (6-week windows) so intentionally different from summary — but the filter logic is duplicated.
+## B) Brick Plan
 
-**AdminReportsOverview.tsx** has **2 independent computation paths**:
+### Brick 4.1 — Environment Policy + UI Gating
 
-1. **`useDashboardDataset` hook**: Calls `deriveMetrics()` which filters entries by date range and computes billable buckets.
-2. **`WeeklyChart` component**: Has its own `weekStart`/`days` calculation (lines 78-108 of WeeklyChart.tsx) that **duplicates** `getDateWindow()` logic. If these diverge, chart totals won't match KPI totals.
-3. **`TeamSummaryTable`**: Calls `deriveTeamSummary()` which filters entries by date range independently.
+**Scope**: Replace hardcoded flags with env-derived policy. Gate demo selector and demo header on environment.
 
-**Identified drift sources:**
-- `WeeklyChart` duplicates date window calculation instead of receiving `weekStart`/`days` from parent
-- `deriveMetrics` and `deriveTeamSummary` both independently filter by date range — could produce different entry sets
-- `EmployeeInsights` chart uses `ownEntries` with duplicated filter logic instead of deriving from `rangeEntries`
-- `reconcileDashboardTotals` in `EmployeeInsights` checks KPI vs entry sum but both come from same `rangeEntries` — the chart is the unvalidated path
+**Files (3)**:
+1. `src/lib/devMode.ts` — derive flags from `VITE_APP_ENV`
+2. `src/contexts/UserContext.tsx` — gate `x-acting-user-id` on `DEMO_MODE_ALLOWED`
+3. `src/components/admin/UsersTable.tsx` — same header gating
 
-## Part 2: Recommended Shared Module
+**Changes**:
 
-### Approach: `useDashboardData(params)` hook
-
-Rather than a full refactor, create a thin hook that wraps the existing aggregation functions into a single output. Both pages call it, get one object, pass slices to child components.
-
-```text
-src/hooks/useDashboardData.ts  (NEW — ~80 lines)
-
-Input:
-  entries: TimeEntry[]           // already scoped/filtered by caller
-  range: RangeOption
-  users?: User[]                 // for team/dept breakdowns
-  weekStatuses?: WeekStatus[]    // for submission status
-
-Output:
-  totals: { totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }
-  topProjects: { id, name, minutes, billableMinutes, billablePct }[]
-  topActivities: { label, minutes }[]
-  weeklyTrend: { weekLabel, totalMinutes, billableMinutes, maybeMinutes, notBillableMinutes }[]
-  teamSummary: TeamMemberSummary[]  (if users provided)
-  reconcileResult: ReconcileResult
+`src/lib/devMode.ts`:
+```typescript
+export const APP_ENV = (import.meta.env.VITE_APP_ENV || 'dev') as 'dev' | 'staging' | 'prod';
+export const DEV_MODE = import.meta.env.VITE_DEV_MODE === 'true';
+export const DEMO_MODE_ALLOWED = APP_ENV !== 'prod';
+export const AUTH_ENABLED = APP_ENV === 'prod' || import.meta.env.VITE_AUTH_ENABLED === 'true';
+export const DEMO_MODE = DEMO_MODE_ALLOWED;
 ```
 
-### Key design decisions:
-- **Input is pre-filtered entries** — the caller (EmployeeInsights or useDashboardDataset) handles scope/category/project filtering. This avoids changing the filtering logic.
-- **One pass** for totals + project + activity aggregation (single loop over entries).
-- **Trend data** computed from a broader entry set (caller provides full user entries, hook handles 6-week windowing internally with category/project filter params).
-- **Reconciliation built-in** — runs automatically after aggregation, ensuring every consumer is validated.
+`UserContext.tsx` and `UsersTable.tsx`: replace `!AUTH_ENABLED` check for actingHeaders with `DEMO_MODE_ALLOWED && !AUTH_ENABLED`.
 
-### Files to change:
-1. `src/hooks/useDashboardData.ts` — **New**. Shared aggregation hook.
-2. `src/pages/EmployeeInsights.tsx` — Replace inline `summary`, `topProjects`, `topActivities`, `chartData` useMemos with single `useDashboardData()` call.
-3. `src/pages/AdminReportsOverview.tsx` — Wire `useDashboardData()` for the reconciliation pass (metrics already come from `useDashboardDataset` which calls `deriveMetrics` — keep that, but add cross-widget validation).
+`UserSelector.tsx`: already uses `DEMO_MODE && !AUTH_ENABLED` — update to use `DEMO_MODE_ALLOWED && !AUTH_ENABLED`.
 
-### What NOT to change:
-- `useDashboardDataset.ts` — keep as-is for scope/user filtering
-- `reportsMockData.ts` — keep existing derive functions; the new hook calls them internally
-- `WeeklyChart.tsx`, `TeamSummaryTable.tsx`, `MetricCards.tsx` — keep as-is; they receive props from parent
-- No new routes or pages
+**Tests**:
+- No env var set → `APP_ENV='dev'`, demo selector visible, `x-acting-user-id` sent
+- `VITE_APP_ENV=prod` → `AUTH_ENABLED=true`, demo selector hidden, no demo header sent
+- `VITE_APP_ENV=staging` → demo allowed, auth follows explicit var
 
-### Implementation order:
-1. Create `useDashboardData.ts` with aggregation logic extracted from EmployeeInsights
-2. Wire EmployeeInsights to use it (summary, topProjects, topActivities, trend all from one source)
-3. Wire AdminReportsOverview's reconciliation to validate team table sum against metrics
+**Rollback**: Revert `devMode.ts`, `UserContext.tsx`, `UsersTable.tsx`.
+
+---
+
+### Brick 4.2 — Edge Function: Reject demo header in prod
+
+**Scope**: Add env policy to `admin-users` so `x-acting-user-id` is rejected when `APP_ENV=prod`.
+
+**Files (1)**:
+1. `supabase/functions/admin-users/index.ts` — add env check in `resolveCallerId`
+
+**Changes**:
+In `resolveCallerId`, after JWT resolution fails, before accepting `x-acting-user-id`:
+```typescript
+const appEnv = Deno.env.get('APP_ENV') || 'dev';
+const demoAllowed = appEnv !== 'prod';
+if (!demoAllowed) {
+  return { callerId: null, error: 'Demo mode disabled in production' };
+}
+```
+
+Add `mode` and `policy` debug fields to success responses.
+
+**Secret needed**: `APP_ENV` secret must be set (defaults to `dev` if absent).
+
+**Tests**:
+- Dev: `x-acting-user-id` works for admin roster user
+- Prod (`APP_ENV=prod`): same request returns 403
+- JWT works in all envs and ignores `x-acting-user-id`
+
+**Rollback**: Revert the file.
+
+---
+
+### Brick 4.3 — verify_jwt strategy
+
+**Decision: No action needed.**
+
+Per `knowledge://disable-jwt-edge-functions`, this project uses Supabase's signing-keys system. The default `verify_jwt = true` is deprecated and doesn't work with signing-keys. The current approach (`verify_jwt = false` + in-code JWT validation via `getUser()`) is the correct pattern. No changes.
+
+---
+
+### Brick 4.4 (Plan only) — Dashboard query-layer enforcement
+
+**Current state**: All data comes from seed files loaded into React state. There are no Supabase queries for time entries on the dashboard — `TimeEntriesContext` loads seed data into memory.
+
+**Scope filtering location**: `useDashboardDataset.ts` lines 81-89. This filters `allUsers` by scope, then filters entries by user IDs. The scope dropdown visibility is controlled by `appRole` checks (lines 67-68).
+
+**UI-only enforcement paths**:
+1. `canViewOrg` / `canViewDepartment` — controls which scope options appear in dropdown
+2. `AdminGuard` — controls access to `/admin/*` routes (checks `isAdmin` which includes `leadership`)
+3. `scopedUsers` — filters by `currentUser.id` for "my" scope, by `departmentId` for "department"
+
+**Gaps**:
+- `getAllEntries()` returns all entries regardless of caller. Any user who passes `AdminGuard` can access all data.
+- HoD users can select "org" scope if they manipulate React state (the dropdown hides it, but it's not enforced).
+- No RLS since data is in-memory seed.
+
+**Proposed patch (≤3 files)**:
+1. `src/hooks/useDashboardDataset.ts` — hard-enforce scope at query layer:
+   - If `appRole === 'hod'` and `scope === 'org'` → force to `'department'`
+   - If `appRole === 'hod'` and `scope === 'department'` → verify `selectedDeptId` is in `managedDepartments`
+   - If `appRole === 'employee'` → force scope to `'my'`
+2. `src/contexts/TimeEntriesContext.tsx` — `getAllEntries()` should check role and filter:
+   - Employee: own entries only
+   - HoD: own + managed department entries
+   - Leadership/Admin/Super_admin: all
+3. `src/pages/AdminReportsOverview.tsx` — no change needed if query layer enforces
+
+This brick should be implemented when the app moves from seed data to real Supabase queries, as the current in-memory model makes query-layer enforcement partially moot (all data is already on the client).
+
+---
+
+## Implementation Order
+
+```text
+4.1 (frontend env policy) → 4.2 (edge function env policy) → 4.3 (skip) → 4.4 (deferred to data migration)
+```
+
+Total files for 4.1 + 4.2: 4 files + 1 edge function redeploy.
 
