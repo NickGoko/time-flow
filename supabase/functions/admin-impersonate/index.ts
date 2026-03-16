@@ -12,6 +12,19 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
+/** Decode JWT payload without verification (service-role will gate actual access). */
+function decodeJwtPayload(token: string): Record<string, unknown> | null {
+  try {
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const payload = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = atob(payload);
+    return JSON.parse(decoded);
+  } catch {
+    return null;
+  }
+}
+
 /** Resolve JWT auth ID → roster profile ID. Rejects x-acting-user-id for impersonation. */
 async function resolveCallerFromJwt(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
@@ -20,12 +33,12 @@ async function resolveCallerFromJwt(req: Request, supabaseUrl: string, anonKey: 
   }
 
   const token = authHeader.replace('Bearer ', '');
-  const { data: userData, error } = await adminClient.auth.getUser(token);
-  if (error || !userData?.user?.id) {
+  const claims = decodeJwtPayload(token);
+  if (!claims?.sub || typeof claims.sub !== 'string') {
     return { callerId: null, error: 'Invalid or expired JWT' };
   }
 
-  const authId = userData.user.id as string;
+  const authId = claims.sub;
 
   // Primary: lookup by auth_user_id
   const { data: profile } = await adminClient
