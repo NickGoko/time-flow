@@ -243,8 +243,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [refreshAllUsers, getActingHeaders]);
 
   const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'update', userId: id, updates, reason, managedDepartments },
     });
 
@@ -273,11 +274,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
         if (refreshed) setCurrentUserState(refreshed);
       }
     }
-  }, [refreshAllUsers, currentUser?.id, actingHeaders]);
+  }, [refreshAllUsers, currentUser?.id, getActingHeaders]);
 
   const toggleUserActive = useCallback(async (id: string) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'toggle-active', userId: id },
     });
 
@@ -291,11 +293,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     }
 
     await refreshAllUsers();
-  }, [refreshAllUsers, actingHeaders]);
+  }, [refreshAllUsers, getActingHeaders]);
 
   const provisionInvite = useCallback(async (userId: string) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'provision-invite', userId },
     });
     if (error) { toast.error('Invite failed: ' + error.message); throw error; }
@@ -303,22 +306,24 @@ export function UserProvider({ children }: { children: ReactNode }) {
     toast.success('Invite created.');
     await refreshAllUsers();
     return result as { action_link?: string | null; [key: string]: unknown };
-  }, [refreshAllUsers, actingHeaders]);
+  }, [refreshAllUsers, getActingHeaders]);
 
   const sendReset = useCallback(async (userId: string) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'send-reset', userId },
     });
     if (error) { toast.error('Reset failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Reset failed: ' + result.error); throw new Error(result.error); }
     toast.success('Password reset link generated.');
     return result as { action_link?: string | null; link_type?: string; [key: string]: unknown };
-  }, [actingHeaders]);
+  }, [getActingHeaders]);
 
   const createWithPassword = useCallback(async (userId: string, password: string) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'create-with-password', userId, password },
     });
     if (error) { toast.error('Create login failed: ' + error.message); throw error; }
@@ -326,18 +331,19 @@ export function UserProvider({ children }: { children: ReactNode }) {
     toast.success('Login created. User can now sign in.');
     await refreshAllUsers();
     return result as { action_link?: string | null; [key: string]: unknown };
-  }, [refreshAllUsers, actingHeaders]);
+  }, [refreshAllUsers, getActingHeaders]);
 
   const bulkProvision = useCallback(async (userIds: string[]) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: { action: 'bulk-provision', userIds },
     });
     if (error) { toast.error('Bulk provision failed: ' + error.message); throw error; }
     if (result?.error) { toast.error('Bulk provision failed: ' + result.error); throw new Error(result.error); }
     await refreshAllUsers();
     return result.results as { userId: string; email: string; status: string; error?: string }[];
-  }, [refreshAllUsers, actingHeaders]);
+  }, [refreshAllUsers, getActingHeaders]);
 
   const allUsers = useMemo(() => allUsersList.filter(u => u.isActive), [allUsersList]);
 
