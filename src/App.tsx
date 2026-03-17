@@ -84,7 +84,7 @@ const App = () => (
                 <Route path="/" element={<Index />} />
                 <Route path="/me/insights" element={<EmployeeInsights />} />
                 <Route path="/admin" element={<AdminGuard />}>
-                  <Route index element={<AdminDashboard />} />
+                  <Route index element={<Navigate to="reports/overview" replace />} />
                   <Route path="reports/overview" element={<AdminReportsOverview />} />
                   <Route path="reference-data" element={<AdminReferenceData />} />
                   <Route path="users" element={<AdminUsers />} />

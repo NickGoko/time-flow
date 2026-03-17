@@ -75,10 +75,23 @@ export function UsersTable() {
   }, [inviteLinkUrl]);
 
   const handleImpersonate = useCallback(async (userId: string) => {
+    if (!AUTH_ENABLED) {
+      toast.error('Impersonation requires authentication. Enable auth and sign in first.');
+      return;
+    }
+
     setImpersonating(userId);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        toast.error('Please sign in before using impersonation.');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('admin-impersonate', {
-        headers: actingHeaders,
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: { targetUserId: userId },
       });
 
@@ -100,7 +113,7 @@ export function UsersTable() {
     } finally {
       setImpersonating(null);
     }
-  }, [actingHeaders]);
+  }, []);
 
   const handleProvisionInvite = useCallback(async (userId: string) => {
     setActionLoading(userId);
