@@ -214,8 +214,9 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [currentUser]);
 
   const addUser = useCallback(async (data: Omit<User, 'id'>) => {
+    const headers = await getActingHeaders();
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
-      headers: actingHeaders,
+      headers,
       body: {
         action: 'create',
         email: data.email,
@@ -239,7 +240,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     toast.success('User invited successfully.');
     await refreshAllUsers();
     return result as { action_link?: string | null; [key: string]: unknown };
-  }, [refreshAllUsers, actingHeaders]);
+  }, [refreshAllUsers, getActingHeaders]);
 
   const updateUser = useCallback(async (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => {
     const { data: result, error } = await supabase.functions.invoke('admin-users', {
