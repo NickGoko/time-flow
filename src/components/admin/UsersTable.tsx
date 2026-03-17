@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { UserDialog } from '@/components/admin/UserDialog';
 import { useCurrentUser } from '@/contexts/UserContext';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogIn, Mail, KeyRound, UserPlus, MoreHorizontal, Copy, CheckCircle2 } from 'lucide-react';
-import { AUTH_ENABLED, DEMO_MODE_ALLOWED } from '@/lib/devMode';
+import { AUTH_ENABLED } from '@/lib/devMode';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,12 +49,6 @@ export function UsersTable() {
   const [inviteLinkType, setInviteLinkType] = useState<'invite' | 'recovery' | 'magiclink'>('invite');
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const actingHeaders = useMemo(() => {
-    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
-      return { 'x-acting-user-id': currentUser.id };
-    }
-    return {};
-  }, [currentUser]);
 
   const showInviteLink = useCallback((link: string, linkType?: string) => {
     setInviteLinkUrl(link);
@@ -75,10 +69,23 @@ export function UsersTable() {
   }, [inviteLinkUrl]);
 
   const handleImpersonate = useCallback(async (userId: string) => {
+    if (!AUTH_ENABLED) {
+      toast.error('Impersonation requires authentication. Enable auth and sign in first.');
+      return;
+    }
+
     setImpersonating(userId);
     try {
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData.session?.access_token;
+
+      if (!accessToken) {
+        toast.error('Please sign in before using impersonation.');
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('admin-impersonate', {
-        headers: actingHeaders,
+        headers: { Authorization: `Bearer ${accessToken}` },
         body: { targetUserId: userId },
       });
 
@@ -100,7 +107,7 @@ export function UsersTable() {
     } finally {
       setImpersonating(null);
     }
-  }, [actingHeaders]);
+  }, []);
 
   const handleProvisionInvite = useCallback(async (userId: string) => {
     setActionLoading(userId);
