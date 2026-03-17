@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { UserDialog } from '@/components/admin/UserDialog';
 import { useCurrentUser } from '@/contexts/UserContext';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogIn, Mail, KeyRound, UserPlus, MoreHorizontal, Copy, CheckCircle2 } from 'lucide-react';
-import { AUTH_ENABLED, DEMO_MODE_ALLOWED } from '@/lib/devMode';
+import { AUTH_ENABLED } from '@/lib/devMode';
 import {
   DropdownMenu,
   DropdownMenuContent,
