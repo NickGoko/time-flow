@@ -2,7 +2,8 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Outlet, Link, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Link, Navigate, useNavigate } from "react-router-dom";
+import { useEffect } from "react";
 import { UserProvider, useCurrentUser } from "@/contexts/UserContext";
 import { ReferenceDataProvider } from "@/contexts/ReferenceDataContext";
 import { TimeEntriesProvider } from "@/contexts/TimeEntriesContext";
@@ -17,10 +18,25 @@ import AdminRoles from "./pages/admin/AdminRoles";
 import AdminAudit from "./pages/admin/AdminAudit";
 import EmployeeInsights from "./pages/EmployeeInsights";
 import SignIn from "./pages/SignIn";
+import ResetPassword from "./pages/ResetPassword";
 import DevAccess from "./pages/DevAccess";
 import { AUTH_ENABLED, DEV_MODE } from "@/lib/devMode";
 
 const queryClient = new QueryClient();
+
+/** Redirects to /reset-password whenever recoveryMode is active (password-recovery link was clicked). */
+function RecoveryRedirect() {
+  const { recoveryMode } = useCurrentUser();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    if (recoveryMode) {
+      navigate('/reset-password', { replace: true });
+    }
+  }, [recoveryMode, navigate]);
+
+  return null;
+}
 
 function SessionGate() {
   const { currentUser, isLoading, notProvisioned } = useCurrentUser();
@@ -77,8 +93,10 @@ const App = () => (
           <Toaster />
           <Sonner />
           <BrowserRouter>
+            <RecoveryRedirect />
             <Routes>
               <Route path="/sign-in" element={<SignIn />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/dev/access" element={<DevAccess />} />
               <Route element={<SessionGate />}>
                 <Route path="/" element={<Index />} />

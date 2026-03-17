@@ -15,6 +15,9 @@ export const DEMO_MODE_ALLOWED = APP_ENV !== 'prod';
 export const AUTH_ENABLED = APP_ENV === 'prod' || import.meta.env.VITE_AUTH_ENABLED === 'true';
 
 /**
+ * True only when demo-mode fallback is both allowed AND auth is not enforced.
+ * When AUTH_ENABLED is true, DEMO_MODE is always false regardless of APP_ENV —
+ * this prevents the app from bootstrapping a demo session instead of requiring login.
  * @deprecated Use DEMO_MODE_ALLOWED instead. Kept for existing imports.
  */
-export const DEMO_MODE = DEMO_MODE_ALLOWED;
+export const DEMO_MODE = DEMO_MODE_ALLOWED && !AUTH_ENABLED;

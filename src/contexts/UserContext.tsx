@@ -18,6 +18,8 @@ interface UserContextType {
   isLoading: boolean;
   isDevMode: boolean;
   notProvisioned: boolean;
+  /** True when the current session was started by a password-recovery link. */
+  recoveryMode: boolean;
   addUser: (data: Omit<User, 'id'>) => Promise<{ action_link?: string | null; [key: string]: unknown } | void>;
   updateUser: (id: string, updates: Partial<Omit<User, 'id'>>, reason?: string, managedDepartments?: string[]) => Promise<void>;
   toggleUserActive: (id: string) => Promise<void>;
@@ -74,6 +76,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
   const [allUsersList, setAllUsersList] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [notProvisioned, setNotProvisioned] = useState(false);
+  const [recoveryMode, setRecoveryMode] = useState(false);
 
   const refreshAllUsers = useCallback(async () => {
     const [profilesRes, rolesRes, scopesRes] = await Promise.all([
@@ -162,7 +165,12 @@ export function UserProvider({ children }: { children: ReactNode }) {
     if (!AUTH_ENABLED) return;
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      async (event, session) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setRecoveryMode(true);
+        } else if (event === 'USER_UPDATED' || event === 'SIGNED_IN' || event === 'SIGNED_OUT') {
+          setRecoveryMode(false);
+        }
         await handleSession(session);
       }
     );
@@ -347,6 +355,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     isLoading,
     isDevMode: DEV_MODE,
     notProvisioned,
+    recoveryMode,
     addUser,
     updateUser,
     toggleUserActive,
@@ -354,7 +363,7 @@ export function UserProvider({ children }: { children: ReactNode }) {
     sendReset,
     createWithPassword,
     bulkProvision,
-  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, notProvisioned, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword, bulkProvision]);
+  }), [currentUser, setCurrentUser, setDevUser, signOut, allUsers, allUsersList, isLoading, notProvisioned, recoveryMode, addUser, updateUser, toggleUserActive, provisionInvite, sendReset, createWithPassword, bulkProvision]);
 
   return (
     <UserContext.Provider value={value}>

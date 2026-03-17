@@ -19,16 +19,16 @@ async function resolveCallerFromJwt(req: Request, supabaseUrl: string, anonKey: 
     return { callerId: null, error: 'JWT required for impersonation' };
   }
 
-  const token = authHeader.replace('Bearer ', '');
   const callerClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
+    auth: { persistSession: false, autoRefreshToken: false },
   });
-  const { data, error } = await callerClient.auth.getClaims(token);
-  if (error || !data?.claims?.sub) {
+  const { data: userData, error } = await callerClient.auth.getUser();
+  if (error || !userData?.user?.id) {
     return { callerId: null, error: 'Invalid or expired JWT' };
   }
 
-  const authId = data.claims.sub as string;
+  const authId = userData.user.id;
 
   // Primary: lookup by auth_user_id
   const { data: profile } = await adminClient
