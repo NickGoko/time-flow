@@ -201,14 +201,15 @@ export function UserProvider({ children }: { children: ReactNode }) {
   // ── Admin user management via Edge Function ───────────────────
 
   const getActingHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
-      return { 'x-acting-user-id': currentUser.id };
-    }
-    // When auth is enabled, pass the session JWT so the edge function can resolve identity
+    // Try JWT session first (works when user is signed in via auth)
     const { data } = await supabase.auth.getSession();
     const token = data.session?.access_token;
     if (token) {
       return { Authorization: `Bearer ${token}` };
+    }
+    // Fall back to demo header when no session but demo mode is allowed
+    if (DEMO_MODE_ALLOWED && currentUser) {
+      return { 'x-acting-user-id': currentUser.id };
     }
     return {};
   }, [currentUser]);
