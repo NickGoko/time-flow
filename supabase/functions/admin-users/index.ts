@@ -124,7 +124,9 @@ Deno.serve(async (req) => {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const anonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const adminClient = createClient(supabaseUrl, serviceRoleKey);
+    const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
     const supabaseRef = new URL(supabaseUrl).hostname.split('.')[0];
 
     const { callerId, error: idError } = await resolveCallerId(req, supabaseUrl, anonKey, adminClient);
@@ -457,17 +459,25 @@ Deno.serve(async (req) => {
       if (!profile) return jsonResponse({ error: 'Profile not found', action }, 404);
 
       const existingAuth = await findAuthUserByEmail(adminClient, profile.email.toLowerCase());
+      let authId: string;
+
       if (existingAuth) {
-        return jsonResponse({ error: 'Auth account already exists for this email. Use send-reset instead.', action }, 400);
+        // Auth account exists — update its password instead of failing
+        const { error: updateErr } = await adminClient.auth.admin.updateUserById(existingAuth.id, {
+          password,
+          email_confirm: true,
+        });
+        if (updateErr) return jsonResponse({ error: 'Failed to update password: ' + updateErr.message, action }, 400);
+        authId = existingAuth.id;
+      } else {
+        const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
+          email: profile.email, password, email_confirm: true,
+          user_metadata: { full_name: profile.name },
+        });
+        if (createErr) return jsonResponse({ error: createErr.message, action }, 400);
+        authId = createData.user.id;
       }
 
-      const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
-        email: profile.email, password, email_confirm: true,
-        user_metadata: { full_name: profile.name },
-      });
-      if (createErr) return jsonResponse({ error: createErr.message, action }, 400);
-
-      const authId = createData.user.id;
       await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
 
       return jsonResponse({ success: true, authUserId: authId, supabase_ref: supabaseRef });

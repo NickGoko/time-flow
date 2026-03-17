@@ -50,7 +50,7 @@ export default function AdminReportsOverview() {
       <TopBar />
       <main className="container px-4 py-8">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Reports Overview</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Dashboards</h1>
           <Badge variant="secondary">Preview</Badge>
         </div>
 
