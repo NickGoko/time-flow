@@ -12,27 +12,16 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-/** Decode JWT payload without verification (service-role will gate actual access). */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
-    const decoded = atob(padded);
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
-
 async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.replace('Bearer ', '');
-    const claims = decodeJwtPayload(token);
-    if (claims?.sub && typeof claims.sub === 'string') {
-      const authId = claims.sub;
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: userData, error } = await callerClient.auth.getUser();
+    if (!error && userData?.user?.id) {
+      const authId = userData.user.id;
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')
