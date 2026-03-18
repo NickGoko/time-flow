@@ -12,27 +12,16 @@ function jsonResponse(body: Record<string, unknown>, status = 200) {
   });
 }
 
-/** Decode JWT payload without verification (service-role will gate actual access). */
-function decodeJwtPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return null;
-    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const padded = b64 + '='.repeat((4 - b64.length % 4) % 4);
-    const decoded = atob(padded);
-    return JSON.parse(decoded);
-  } catch {
-    return null;
-  }
-}
-
 async function resolveCallerId(req: Request, supabaseUrl: string, anonKey: string, adminClient: any): Promise<{ callerId: string | null; error?: string }> {
   const authHeader = req.headers.get('Authorization');
   if (authHeader?.startsWith('Bearer ')) {
-    const token = authHeader.replace('Bearer ', '');
-    const claims = decodeJwtPayload(token);
-    if (claims?.sub && typeof claims.sub === 'string') {
-      const authId = claims.sub;
+    const callerClient = createClient(supabaseUrl, anonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+    const { data: userData, error } = await callerClient.auth.getUser();
+    if (!error && userData?.user?.id) {
+      const authId = userData.user.id;
       const { data: profile } = await adminClient
         .from('profiles')
         .select('id')
@@ -470,17 +459,25 @@ Deno.serve(async (req) => {
       if (!profile) return jsonResponse({ error: 'Profile not found', action }, 404);
 
       const existingAuth = await findAuthUserByEmail(adminClient, profile.email.toLowerCase());
+      let authId: string;
+
       if (existingAuth) {
-        return jsonResponse({ error: 'Auth account already exists for this email. Use send-reset instead.', action }, 400);
+        // Auth account exists — update its password instead of failing
+        const { error: updateErr } = await adminClient.auth.admin.updateUserById(existingAuth.id, {
+          password,
+          email_confirm: true,
+        });
+        if (updateErr) return jsonResponse({ error: 'Failed to update password: ' + updateErr.message, action }, 400);
+        authId = existingAuth.id;
+      } else {
+        const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
+          email: profile.email, password, email_confirm: true,
+          user_metadata: { full_name: profile.name },
+        });
+        if (createErr) return jsonResponse({ error: createErr.message, action }, 400);
+        authId = createData.user.id;
       }
 
-      const { data: createData, error: createErr } = await adminClient.auth.admin.createUser({
-        email: profile.email, password, email_confirm: true,
-        user_metadata: { full_name: profile.name },
-      });
-      if (createErr) return jsonResponse({ error: createErr.message, action }, 400);
-
-      const authId = createData.user.id;
       await adminClient.from('profiles').update({ auth_user_id: authId }).eq('id', profile.id);
 
       return jsonResponse({ success: true, authUserId: authId, supabase_ref: supabaseRef });

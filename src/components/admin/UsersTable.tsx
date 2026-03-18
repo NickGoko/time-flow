@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { AdminCrudTable, type CrudColumn } from '@/components/admin/AdminCrudTable';
 import { UserDialog } from '@/components/admin/UserDialog';
 import { useCurrentUser } from '@/contexts/UserContext';
@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 import { LogIn, Mail, KeyRound, UserPlus, MoreHorizontal, Copy, CheckCircle2 } from 'lucide-react';
-import { AUTH_ENABLED, DEMO_MODE_ALLOWED } from '@/lib/devMode';
+import { AUTH_ENABLED } from '@/lib/devMode';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -49,12 +49,6 @@ export function UsersTable() {
   const [inviteLinkType, setInviteLinkType] = useState<'invite' | 'recovery' | 'magiclink'>('invite');
   const [linkCopied, setLinkCopied] = useState(false);
 
-  const actingHeaders = useMemo(() => {
-    if (DEMO_MODE_ALLOWED && !AUTH_ENABLED && currentUser) {
-      return { 'x-acting-user-id': currentUser.id };
-    }
-    return {};
-  }, [currentUser]);
 
   const showInviteLink = useCallback((link: string, linkType?: string) => {
     setInviteLinkUrl(link);
