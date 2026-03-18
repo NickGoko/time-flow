@@ -113,16 +113,18 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const demoBootstrap = useCallback(async () => {
-    const users = await refreshAllUsers();
-    if (!users || users.length === 0) {
+    try {
+      const users = await refreshAllUsers();
+      const activeUsers = (users ?? []).filter(u => u.isActive);
+      const firstAdmin = activeUsers.find(u => u.appRole === 'admin' || u.appRole === 'super_admin');
+      setCurrentUserState(firstAdmin ?? activeUsers[0] ?? null);
+      setNotProvisioned(false);
+    } catch (err) {
+      console.error('[demoBootstrap] unexpected error:', err);
+      setCurrentUserState(null);
+    } finally {
       setIsLoading(false);
-      return;
     }
-    const activeUsers = users.filter(u => u.isActive);
-    const firstAdmin = activeUsers.find(u => u.appRole === 'admin' || u.appRole === 'super_admin');
-    setCurrentUserState(firstAdmin ?? activeUsers[0] ?? null);
-    setNotProvisioned(false);
-    setIsLoading(false);
   }, [refreshAllUsers]);
 
   // ── Auth-disabled / demo mode bootstrap ──────────────────────
@@ -132,28 +134,32 @@ export function UserProvider({ children }: { children: ReactNode }) {
   }, [demoBootstrap]);
 
   const handleSession = useCallback(async (session: Session | null) => {
-    if (!session?.user) {
-      // No auth session: fall back to demo if enabled
-      if (DEMO_MODE) {
-        await demoBootstrap();
-      } else {
-        setCurrentUserState(null);
-        setIsLoading(false);
+    try {
+      if (!session?.user) {
+        // No auth session: fall back to demo if enabled
+        if (DEMO_MODE) {
+          await demoBootstrap();
+        } else {
+          setCurrentUserState(null);
+        }
+        return;
       }
-      return;
-    }
 
-    // Auth session user.id is the auth UUID; look up profile by auth_user_id (with legacy fallback)
-    const user = await fetchUserProfile(session.user.id, true);
-    if (user) {
-      setCurrentUserState(user);
-      setNotProvisioned(false);
-      setIsLoading(false);
-      refreshAllUsers();
-    } else {
-      // Auth user exists but no roster profile → not provisioned
+      // Auth session user.id is the auth UUID; look up profile by auth_user_id (with legacy fallback)
+      const user = await fetchUserProfile(session.user.id, true);
+      if (user) {
+        setCurrentUserState(user);
+        setNotProvisioned(false);
+        refreshAllUsers();
+      } else {
+        // Auth user exists but no roster profile → not provisioned
+        setCurrentUserState(null);
+        setNotProvisioned(true);
+      }
+    } catch (err) {
+      console.error('[handleSession] unexpected error:', err);
       setCurrentUserState(null);
-      setNotProvisioned(true);
+    } finally {
       setIsLoading(false);
     }
   }, [refreshAllUsers, demoBootstrap]);
