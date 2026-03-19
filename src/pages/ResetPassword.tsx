@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, Eye, EyeOff } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ export default function ResetPassword() {
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -71,27 +73,39 @@ export default function ResetPassword() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="rp-password">New Password</Label>
-                <Input
-                  id="rp-password"
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="Minimum 8 characters"
-                  value={password}
-                  onChange={e => setPassword(e.target.value)}
-                />
+                <div className="relative">
+                  <Input
+                    id="rp-password"
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="Minimum 8 characters"
+                    value={password}
+                    onChange={e => setPassword(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showPassword ? 'Hide password' : 'Show password'}>
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor="rp-confirm">Confirm Password</Label>
-                <Input
-                  id="rp-confirm"
-                  type="password"
-                  required
-                  minLength={8}
-                  placeholder="Repeat your new password"
-                  value={confirm}
-                  onChange={e => setConfirm(e.target.value)}
-                />
+                <div className="relative">
+                  <Input
+                    id="rp-confirm"
+                    type={showConfirm ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="Repeat your new password"
+                    value={confirm}
+                    onChange={e => setConfirm(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button type="button" onClick={() => setShowConfirm(v => !v)} className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-foreground" tabIndex={-1} aria-label={showConfirm ? 'Hide password' : 'Show password'}>
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
               {error && <p className="text-sm text-destructive">{error}</p>}
               <Button type="submit" disabled={submitting || password.length < 8} className="w-full">
