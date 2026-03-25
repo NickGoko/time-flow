@@ -196,14 +196,15 @@ export function deriveDailyDepartmentBreakdown(
   deptItems: DepartmentBreakdownItem[],
   users: User[],
 ): Record<string, unknown>[] {
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const userDeptMap = new Map(users.map(u => [u.id, u.departmentId]));
   const topIds = new Set(deptItems.filter(d => d.departmentId !== 'other').map(d => d.departmentId));
 
   return Array.from({ length: days }, (_, i) => {
     const date = getWeekDate(weekStart, i);
+    const d = parseLocalDate(date);
     const dayEntries = entries.filter(e => e.date === date);
-    const row: Record<string, unknown> = { date, dayLabel: dayLabels[i % 7] };
+    const row: Record<string, unknown> = { date, dayLabel: dayNames[d.getDay()] };
 
     for (const item of deptItems) {
       if (item.departmentId === 'other') {
