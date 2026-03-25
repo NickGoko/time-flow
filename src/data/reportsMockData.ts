@@ -130,13 +130,14 @@ export function deriveDailyProjectBreakdown(
   days: number,
   projectItems: ProjectBreakdownItem[],
 ): Record<string, unknown>[] {
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
   const topIds = new Set(projectItems.filter(p => p.projectId !== 'other').map(p => p.projectId));
 
   return Array.from({ length: days }, (_, i) => {
     const date = getWeekDate(weekStart, i);
+    const d = parseLocalDate(date);
     const dayEntries = entries.filter(e => e.date === date);
-    const row: Record<string, unknown> = { date, dayLabel: dayLabels[i % 7] };
+    const row: Record<string, unknown> = { date, dayLabel: dayNames[d.getDay()] };
 
     for (const item of projectItems) {
       if (item.projectId === 'other') {
