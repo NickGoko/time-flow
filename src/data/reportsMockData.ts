@@ -75,16 +75,17 @@ export function deriveDailyBreakdown(
   days: number,
   projectFilter?: string,
 ): DailyBreakdown[] {
-  const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
   return Array.from({ length: days }, (_, i) => {
     const date = getWeekDate(weekStart, i);
+    const d = parseLocalDate(date);
     let dayEntries = entries.filter(e => e.date === date);
     if (projectFilter) dayEntries = dayEntries.filter(e => e.projectId === projectFilter);
 
     return {
       date,
-      dayLabel: dayLabels[i % 7],
+      dayLabel: dayNames[d.getDay()],
       billableMinutes: dayEntries.filter(e => e.billableStatus === 'billable').reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0),
       maybeBillableMinutes: dayEntries.filter(e => e.billableStatus === 'maybe_billable').reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0),
       notBillableMinutes: dayEntries.filter(e => e.billableStatus === 'not_billable').reduce((s, e) => s + toTotalMinutes(e.hours, e.minutes), 0),
