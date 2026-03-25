@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { TopBar } from '@/components/TopBar';
-import { Badge } from '@/components/ui/badge';
+import { Card } from '@/components/ui/card';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
