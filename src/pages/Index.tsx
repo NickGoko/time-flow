@@ -25,7 +25,7 @@ const Index = () => {
           </div>
           <Button variant="outline" asChild className="gap-2">
             <Link to="/me/insights">
-              Dashboard
+              My Dashboard
               <ArrowRight className="h-4 w-4" />
             </Link>
           </Button>

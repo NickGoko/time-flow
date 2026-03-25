@@ -30,12 +30,12 @@ export function TopBar() {
             <nav className="hidden md:flex items-center gap-1">
               {isAdmin ? (
                 <>
-                  <Link to="/admin/reports/overview" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Dashboards</Link>
+                  <Link to="/admin/reports/overview" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Reports</Link>
                   <Link to="/admin/reference-data" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Reference Data</Link>
                   <Link to="/admin/users" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">Users</Link>
                 </>
               ) : (
-                <Link to="/me/insights" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">History &amp; Insights</Link>
+                <Link to="/me/insights" className="px-3 py-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">My Dashboard</Link>
               )}
             </nav>
           )}

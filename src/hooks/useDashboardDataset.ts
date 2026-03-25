@@ -19,20 +19,19 @@ export function getDateWindow(range: RangeOption): { weekStart: string; days: nu
   if (range === 'this_week') {
     const ws = getWeekStart(now);
     const start = parseLocalDate(ws);
-    const end = new Date(start); end.setDate(end.getDate() + 6);
-    return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
+    const end = new Date(start); end.setDate(end.getDate() + 4);
+    return { weekStart: ws, days: 5, rangeStartDate: start, rangeEndDate: end };
   }
   if (range === 'last_week') {
     const d = new Date(now); d.setDate(d.getDate() - 7);
     const ws = getWeekStart(d);
     const start = parseLocalDate(ws);
-    const end = new Date(start); end.setDate(end.getDate() + 6);
-    return { weekStart: ws, days: 7, rangeStartDate: start, rangeEndDate: end };
+    const end = new Date(start); end.setDate(end.getDate() + 4);
+    return { weekStart: ws, days: 5, rangeStartDate: start, rangeEndDate: end };
   }
   if (range === 'today') {
-    const ws = getWeekStart(now);
-    const dayOfWeek = (now.getDay() + 6) % 7;
-    return { weekStart: ws, days: dayOfWeek + 1, rangeStartDate: now, rangeEndDate: now };
+    const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    return { weekStart: todayStr, days: 1, rangeStartDate: now, rangeEndDate: now };
   }
   if (range === 'this_quarter') {
     const qMonth = Math.floor(now.getMonth() / 3) * 3;

@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { TopBar } from '@/components/TopBar';
-import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -50,8 +49,7 @@ export default function AdminReportsOverview() {
       <TopBar />
       <main className="container px-4 py-8">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl font-semibold tracking-tight">Dashboards</h1>
-          <Badge variant="secondary">Preview</Badge>
+          <h1 className="text-2xl font-semibold tracking-tight">Reports overview</h1>
         </div>
 
         {/* Scope selector */}

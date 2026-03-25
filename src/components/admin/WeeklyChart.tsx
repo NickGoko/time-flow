@@ -77,15 +77,15 @@ export function WeeklyChart({ range, entries: entriesProp, users: usersProp }: P
 
   const { weekStart, days } = useMemo(() => {
     const now = new Date();
-    if (range === 'this_week') return { weekStart: getWeekStart(now), days: 7 };
+    if (range === 'this_week') return { weekStart: getWeekStart(now), days: 5 };
     if (range === 'last_week') {
       const d = new Date(now);
       d.setDate(d.getDate() - 7);
-      return { weekStart: getWeekStart(d), days: 7 };
+      return { weekStart: getWeekStart(d), days: 5 };
     }
     if (range === 'today') {
-      const dayOfWeek = (now.getDay() + 6) % 7;
-      return { weekStart: getWeekStart(now), days: dayOfWeek + 1 };
+      const todayStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      return { weekStart: todayStr, days: 1 };
     }
     if (range === 'this_quarter') {
       const qMonth = Math.floor(now.getMonth() / 3) * 3;
