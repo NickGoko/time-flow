@@ -316,7 +316,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
   const hasErrors = Object.keys(row.errors).length > 0;
 
   return (
-    <div className={`p-4 rounded-lg border ${hasErrors ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card'} space-y-3`}>
+    <div className={`p-3 rounded-lg border ${hasErrors ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card'} space-y-2`}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">Entry {index + 1}</span>
         {canRemove && (
@@ -389,7 +389,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         </div>
 
         {/* Task Description */}
-        <div className="sm:col-span-2 lg:col-span-2">
+        <div className="sm:col-span-2 lg:col-span-3">
           <Input
             placeholder="Task description *"
             value={row.taskDescription}

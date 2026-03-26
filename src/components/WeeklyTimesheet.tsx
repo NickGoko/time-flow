@@ -294,29 +294,19 @@ export function WeeklyTimesheet() {
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 sm:gap-3">
               {!submitted && (
                 <Tabs value={entryMode} onValueChange={(v) => setEntryMode(v as 'single' | 'grid')}>
-                  <TabsList className="h-8 w-full sm:w-auto">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <TabsTrigger
-                          value="single"
-                          className="text-xs px-3 h-7 flex-1 sm:flex-initial data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                        >
-                          Single entry
-                        </TabsTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Log a single time entry via a form</TooltipContent>
-                    </Tooltip>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <TabsTrigger
-                          value="grid"
-                          className="text-xs px-3 h-7 flex-1 sm:flex-initial data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                        >
-                          Multiple entries
-                        </TabsTrigger>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">Log multiple entries at once in a table</TooltipContent>
-                    </Tooltip>
+                  <TabsList className="h-9 w-full sm:w-auto bg-muted/80">
+                    <TabsTrigger
+                      value="single"
+                      className="text-xs px-4 h-7 flex-1 sm:flex-initial font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                    >
+                      Single entry
+                    </TabsTrigger>
+                    <TabsTrigger
+                      value="grid"
+                      className="text-xs px-4 h-7 flex-1 sm:flex-initial font-medium data-[state=active]:bg-primary data-[state=active]:text-primary-foreground data-[state=active]:shadow-sm"
+                    >
+                      Multiple entries
+                    </TabsTrigger>
                   </TabsList>
                 </Tabs>
               )}
