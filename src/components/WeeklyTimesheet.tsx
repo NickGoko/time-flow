@@ -137,7 +137,7 @@ export function WeeklyTimesheet() {
   const dayProgressPercent = Math.round((selectedDayData.totalMinutes / dayTargetMinutes) * 100);
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Week Navigation & Summary */}
       <Card>
         <CardHeader className="pb-3">
@@ -174,7 +174,7 @@ export function WeeklyTimesheet() {
         </CardHeader>
         <CardContent>
           {/* Progress bar */}
-          <div className="space-y-2 mb-6">
+          <div className="space-y-1.5 mb-4">
             <div className="flex justify-between text-sm">
               <span className="text-muted-foreground">Weekly progress</span>
               <span className={cn("font-medium tabular-nums", weekColor.text)}>
@@ -184,7 +184,7 @@ export function WeeklyTimesheet() {
                 )}
               </span>
             </div>
-            <div className="h-2 bg-secondary rounded-full overflow-hidden">
+            <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
               <div 
                 className={cn("h-full rounded-full transition-all duration-500", weekColor.bg)}
                 style={{ width: `${progressPercent}%` }}
@@ -249,25 +249,19 @@ export function WeeklyTimesheet() {
           </div>
 
           {/* Billable summary */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 mt-4 pt-4 border-t">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-billable" />
-              <span className="text-sm text-muted-foreground">
-                Billable: {formatHours(weekSummary.billableMinutes)}h
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-warning" />
-              <span className="text-sm text-muted-foreground">
-                Maybe billable: {formatHours(weekSummary.maybeBillableMinutes)}h
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-not-billable" />
-              <span className="text-sm text-muted-foreground">
-                Not billable: {formatHours(weekSummary.notBillableMinutes)}h
-              </span>
-            </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 pt-3 border-t text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-billable" />
+              Billable: {formatHours(weekSummary.billableMinutes)}h
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-warning" />
+              Maybe: {formatHours(weekSummary.maybeBillableMinutes)}h
+            </span>
+            <span className="flex items-center gap-1.5">
+              <span className="w-1.5 h-1.5 rounded-full bg-not-billable" />
+              Not billable: {formatHours(weekSummary.notBillableMinutes)}h
+            </span>
           </div>
         </CardContent>
       </Card>
@@ -347,10 +341,10 @@ export function WeeklyTimesheet() {
 
           {/* Existing entries list */}
           {selectedDayData.entries.length === 0 && entryMode !== 'grid' ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <p>No time entries for this day</p>
+            <div className="text-center py-6 text-muted-foreground">
+              <p className="text-sm">No time entries for this day</p>
               {!submitted && (
-                <p className="text-sm mt-1">Click "Add entry" to log time</p>
+                <p className="text-xs mt-1">Click "Add entry" to log time</p>
               )}
             </div>
           ) : selectedDayData.entries.length > 0 ? (

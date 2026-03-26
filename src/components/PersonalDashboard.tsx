@@ -58,18 +58,18 @@ export function PersonalDashboard() {
   ];
 
   return (
-    <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
       {stats.map((stat) => (
-        <Card key={stat.title}>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
+        <Card key={stat.title} className="py-0">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 pt-3 px-4">
+            <CardTitle className="text-xs font-medium text-muted-foreground">
               {stat.title}
             </CardTitle>
-            <stat.icon className={cn("h-4 w-4", stat.color)} />
+            <stat.icon className={cn("h-3.5 w-3.5", stat.color)} />
           </CardHeader>
-          <CardContent>
-            <div className={cn("text-2xl font-bold", stat.color)}>{stat.value}</div>
-            <p className="text-xs text-muted-foreground mt-1">{stat.subtitle}</p>
+          <CardContent className="pb-3 px-4">
+            <div className={cn("text-xl font-bold", stat.color)}>{stat.value}</div>
+            <p className="text-xs text-muted-foreground">{stat.subtitle}</p>
           </CardContent>
         </Card>
       ))}
