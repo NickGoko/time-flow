@@ -45,7 +45,7 @@ export function buildCohortBuckets(summaries: UserWeekSummary[]): CohortBucket[]
     };
   };
 
-  return [bucket('Top 25%', top), bucket('Mid 50%', mid), bucket('Bottom 25%', bottom)];
+  return [bucket('≥ 95% registered', top), bucket('60–94% registered', mid), bucket('< 60% registered', bottom)];
 }
 
 // ── Live aggregate helpers ──────────────────────────────────────────
@@ -251,7 +251,8 @@ export function deriveTeamSummary(
         userId: user.id,
         userName: user.name,
         totalMinutes,
-        compliancePercent: expectedMinutes > 0 ? Math.round((totalMinutes / expectedMinutes) * 100) : 0,
+        expectedMinutes,
+        registeredPercent: expectedMinutes > 0 ? Math.round((totalMinutes / expectedMinutes) * 100) : 0,
         billablePercent: totalMinutes > 0 ? Math.round((billableMinutes / totalMinutes) * 100) : 0,
         maybeBillableMinutes,
         weekSubmitted: submitted,

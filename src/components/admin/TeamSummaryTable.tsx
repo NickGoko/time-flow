@@ -14,7 +14,7 @@ import { formatDuration, TimeEntry, User, WeekStatus } from '@/types';
 import { TeamMemberSummary } from '@/types/reports';
 import { RangeOption, getExpectedMinutes } from '@/hooks/useDashboardDataset';
 
-type SortKey = 'userName' | 'totalMinutes' | 'compliancePercent' | 'billablePercent' | 'maybeBillableMinutes' | 'weekSubmitted';
+type SortKey = 'userName' | 'totalMinutes' | 'registeredPercent' | 'billablePercent' | 'maybeBillableMinutes' | 'weekSubmitted';
 type SortDir = 'asc' | 'desc';
 
 interface Props {
@@ -69,7 +69,7 @@ export function TeamSummaryTable({ weekStart, days, range, entries, users, weekS
   return (
     <Card className="border-border bg-card rounded-lg p-4">
       <h3 className="text-sm font-medium text-muted-foreground mb-3">
-        {isMySummary ? 'My summary' : 'Team Summary'}
+        {isMySummary ? 'My summary' : 'Team summary'}
       </h3>
       <Table>
         <TableHeader>
@@ -80,8 +80,8 @@ export function TeamSummaryTable({ weekStart, days, range, entries, users, weekS
             <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('totalMinutes')}>
               Hours <SortIcon col="totalMinutes" />
             </TableHead>
-            <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('compliancePercent')}>
-              Compliance % <SortIcon col="compliancePercent" />
+            <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('registeredPercent')}>
+              Registered % <SortIcon col="registeredPercent" />
             </TableHead>
             <TableHead className="text-right cursor-pointer select-none" onClick={() => toggleSort('billablePercent')}>
               Billable % <SortIcon col="billablePercent" />
@@ -99,7 +99,12 @@ export function TeamSummaryTable({ weekStart, days, range, entries, users, weekS
             <TableRow key={row.userId}>
               <TableCell className="font-medium">{row.userName}</TableCell>
               <TableCell className="text-right">{formatDuration(row.totalMinutes)}</TableCell>
-              <TableCell className="text-right">{Math.min(row.compliancePercent, 100)}%</TableCell>
+              <TableCell className="text-right">
+                <span>{row.registeredPercent}%</span>
+                <span className="ml-1 text-xs text-muted-foreground">
+                  ({formatDuration(row.totalMinutes)} of {formatDuration(row.expectedMinutes)})
+                </span>
+              </TableCell>
               <TableCell className="text-right">{row.billablePercent}%</TableCell>
               <TableCell className="text-right">{formatDuration(row.maybeBillableMinutes)}</TableCell>
               <TableCell className="text-center">

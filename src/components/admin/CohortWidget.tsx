@@ -44,7 +44,7 @@ export function CohortWidget({ entries: entriesProp, users: usersProp, weekStart
   return (
     <Card className="border-border bg-card rounded-lg p-4">
       <div className="mb-1 flex items-center justify-between">
-        <h3 className="text-sm font-medium">Cohort Distribution</h3>
+        <h3 className="text-sm font-medium">Registration distribution</h3>
         <span className="text-xs text-muted-foreground">{allUsers.length} users · {days === 1 ? 'today' : `${days} days`}</span>
       </div>
 

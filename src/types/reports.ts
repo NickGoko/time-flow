@@ -36,7 +36,8 @@ export interface TeamMemberSummary {
   userId: string;
   userName: string;
   totalMinutes: number;
-  compliancePercent: number;
+  expectedMinutes: number;
+  registeredPercent: number;
   billablePercent: number;
   maybeBillableMinutes: number;
   weekSubmitted: boolean;
