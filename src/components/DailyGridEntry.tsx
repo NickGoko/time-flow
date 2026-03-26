@@ -316,7 +316,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
   const hasErrors = Object.keys(row.errors).length > 0;
 
   return (
-    <div className={`p-4 rounded-lg border ${hasErrors ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card'} space-y-3`}>
+    <div className={`p-3 rounded-lg border ${hasErrors ? 'border-destructive/40 bg-destructive/5' : 'border-border bg-card'} space-y-2`}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">Entry {index + 1}</span>
         {canRemove && (
@@ -377,7 +377,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div>
           <Select value={row.activityTypeId} onValueChange={v => onUpdate(row.id, 'activityTypeId', v)} disabled={!row.phaseId}>
             <SelectTrigger className={row.errors.activityTypeId ? 'border-destructive' : ''}>
-              <SelectValue placeholder={row.phaseId ? 'Activity/task *' : 'Select project first'} />
+              <SelectValue placeholder={row.phaseId ? 'Activity/task' : 'Select project first'} />
             </SelectTrigger>
             <SelectContent>
               {activities.map(a => (
@@ -389,7 +389,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         </div>
 
         {/* Task Description */}
-        <div className="sm:col-span-2 lg:col-span-2">
+        <div className="sm:col-span-2 lg:col-span-3">
           <Input
             placeholder="Task description *"
             value={row.taskDescription}
@@ -404,8 +404,8 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               {deptDeliverables.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic py-1">
-                  No deliverables configured. Contact Admin.
+                <p className="text-xs text-muted-foreground italic py-1">
+                  No deliverables configured. Contact admin.
                 </p>
               ) : (
                 <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
