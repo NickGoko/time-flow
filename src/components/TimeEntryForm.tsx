@@ -166,6 +166,9 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
   const wouldExceedCap = !travelExempt && (currentNonTravelTotal + entryMinutes > MAX_DAILY_MINUTES);
   const remainingMinutes = MAX_DAILY_MINUTES - currentNonTravelTotal;
 
+  // Soft warning at daily target (8h) — does not block save
+  const overTarget = !travelExempt && (currentNonTravelTotal + entryMinutes > HOURS_PER_DAY_TARGET * 60);
+
   const isFormValid = 
     projectId && 
     phaseId && 
@@ -445,10 +448,17 @@ export function TimeEntryForm({ selectedDate, onSuccess }: TimeEntryFormProps) {
                 {travelExempt && ' (Travel — exempt from cap)'}
               </p>
               
-              {/* Validation error */}
+              {/* Soft warning at target */}
+              {overTarget && !wouldExceedCap && (
+                <p className="text-sm text-warning font-medium">
+                  This will bring your daily total above {HOURS_PER_DAY_TARGET}h. You can still save.
+                </p>
+              )}
+
+              {/* Hard block at cap */}
               {(wouldExceedCap || validationError) && (
                 <p className="text-sm text-destructive font-medium">
-                  {validationError || `Daily non-travel total can't exceed ${MAX_DAILY_HOURS}h. Only Travel entries may exceed this limit.`}
+                  {validationError || `Daily non-travel total cannot exceed ${MAX_DAILY_HOURS}h. You have ${formatHours(remainingMinutes)}h remaining.`}
                 </p>
               )}
             </div>

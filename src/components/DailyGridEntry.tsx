@@ -247,7 +247,7 @@ export function DailyGridEntry({ selectedDate, disabled }: DailyGridEntryProps) 
             return (
               <span className={cn("text-xs tabular-nums", color.text)}>
                 Logged: {formatHours(existingMinutes)}h / {target}h ({pct}%)
-                {ot > 0 && <span className="ml-1 text-success">· OT +{formatHours(ot)}h</span>}
+                {ot > 0 && <span className="ml-1 text-muted-foreground">+{formatHours(ot)}h</span>}
               </span>
             );
           })()}
