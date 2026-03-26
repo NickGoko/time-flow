@@ -180,7 +180,7 @@ export function WeeklyTimesheet() {
               <span className={cn("font-medium tabular-nums", weekColor.text)}>
                 {formatHours(weekSummary.totalMinutes)}h / {WEEKLY_EXPECTED_HOURS}h ({weekRawPercent}%)
                 {weekOvertimeMinutes > 0 && (
-                  <span className="ml-1.5 text-success">· Overtime +{formatHours(weekOvertimeMinutes)}h</span>
+                  <span className="ml-1.5 text-muted-foreground">+{formatHours(weekOvertimeMinutes)}h</span>
                 )}
               </span>
             </div>
@@ -204,12 +204,12 @@ export function WeeklyTimesheet() {
               const allowed = isDateAllowed(day.date);
               
               return (
-                <button
+              <button
                   key={day.date}
                   onClick={() => allowed && setSelectedDay(i)}
                   disabled={!allowed}
                   className={cn(
-                    "flex flex-col items-center p-2 sm:p-3 rounded-lg border transition-all min-h-[68px]",
+                    "flex flex-col items-center p-1.5 sm:p-2 rounded-lg border transition-all",
                     !allowed && "opacity-40 cursor-not-allowed",
                     allowed && selectedDay === i 
                       ? "border-primary bg-primary/5 ring-1 ring-primary/20" 
@@ -219,36 +219,28 @@ export function WeeklyTimesheet() {
                 >
                   <span className={cn(
                     "text-xs font-medium",
-                    isWeekend ? "text-muted-foreground" : "text-foreground"
+                    isWeekend ? "text-muted-foreground" : "text-foreground",
+                    allowed && isToday(day.date) && "text-primary"
                   )}>
-                    {day.dayName}
-                  </span>
-                  <span className={cn(
-                    "text-xs text-muted-foreground",
-                    allowed && isToday(day.date) && "font-semibold text-primary"
-                  )}>
-                    {parseLocalDate(day.date).getDate()}
+                    {day.dayName} {parseLocalDate(day.date).getDate()}
                   </span>
                   {(() => {
                     const dayPct = Math.round((day.totalMinutes / dayTarget) * 100);
                     const dayColor = getProgressColor(dayPct);
                     const dayOT = Math.max(0, day.totalMinutes - dayTarget);
                     return (
-                      <>
-                        <div className={cn(
-                          "mt-1 sm:mt-2 text-base sm:text-lg font-semibold tabular-nums",
-                          !hasEntries ? "text-muted-foreground/50" : dayColor.text,
-                        )}>
-                          {formatHours(day.totalMinutes)}h
-                        </div>
-                        <span className="text-[10px] text-muted-foreground">{HOURS_PER_DAY_TARGET}h</span>
+                      <div className={cn(
+                        "mt-1 text-sm sm:text-base font-semibold tabular-nums",
+                        !hasEntries ? "text-muted-foreground/50" : dayColor.text,
+                      )}>
+                        {formatHours(day.totalMinutes)}h
                         {dayOT > 0 && (
-                          <span className="text-[10px] text-success mt-0.5">+{formatHours(dayOT)}h OT</span>
+                          <span className="text-[10px] font-normal text-muted-foreground ml-0.5">+{formatHours(dayOT)}h</span>
                         )}
-                        {isAtMax && (
-                          <span className="text-[10px] text-warning mt-0.5">Max</span>
+                        {isAtMax && !dayOT && (
+                          <span className="text-[10px] font-normal text-warning ml-0.5">max</span>
                         )}
-                      </>
+                      </div>
                     );
                   })()}
                 </button>
@@ -299,7 +291,7 @@ export function WeeklyTimesheet() {
                   return (
                     <span className={cn("text-xs sm:text-sm tabular-nums font-medium", dayColor.text)}>
                       {formatHours(selectedDayData.totalMinutes)}h / {HOURS_PER_DAY_TARGET}h ({dayProgressPercent}%)
-                      {dayOT > 0 && <span className="ml-1 text-success">· Overtime +{formatHours(dayOT)}h</span>}
+                      {dayOT > 0 && <span className="ml-1 text-muted-foreground">+{formatHours(dayOT)}h</span>}
                     </span>
                   );
                 })()}

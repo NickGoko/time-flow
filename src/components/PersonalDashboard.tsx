@@ -37,7 +37,7 @@ export function PersonalDashboard() {
       value: `${formatHours(remainingMinutes)}h`,
       subtitle: `${workingDaysRemaining} working days left`,
       icon: Target,
-      color: remainingMinutes > 0 ? 'text-warning' : 'text-success',
+      color: remainingMinutes > 0 ? 'text-warning' : 'text-muted-foreground',
     },
     {
       title: 'Billable rate',

@@ -229,7 +229,7 @@ const EmployeeInsights = () => {
                 <span className="text-muted-foreground">Progress</span>
                 <span className={cn('font-medium tabular-nums', progressColor.text)}>
                   {formatHours(summary.totalMinutes)}h / {formatHours(expectedMinutes)}h ({progressPct}%)
-                  {overtime > 0 && <span className="ml-1.5 text-success">· Overtime +{formatHours(overtime)}h</span>}
+                  {overtime > 0 && <span className="ml-1.5 text-muted-foreground">+{formatHours(overtime)}h</span>}
                 </span>
               </div>
               <Progress value={Math.min(100, progressPct)} className="h-2" />
