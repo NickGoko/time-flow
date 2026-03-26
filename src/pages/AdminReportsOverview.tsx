@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { TopBar } from '@/components/TopBar';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { MetricCards } from '@/components/admin/MetricCards';
 import { WeeklyChart } from '@/components/admin/WeeklyChart';
 import { CohortWidget } from '@/components/admin/CohortWidget';
 import { TeamSummaryTable } from '@/components/admin/TeamSummaryTable';
-import { useDashboardDataset, RangeOption, ScopeOption } from '@/hooks/useDashboardDataset';
+import { useDashboardDataset, RangeOption, ScopeOption, getExpectedMinutes } from '@/hooks/useDashboardDataset';
 import { formatDuration } from '@/types';
 import { AlertTriangle, Clock, HelpCircle, ShieldAlert } from 'lucide-react';
 import { useDashboardData } from '@/hooks/useDashboardData';
@@ -102,7 +102,7 @@ export default function AdminReportsOverview() {
 
         <div className="mt-6 space-y-6">
           <ReconciliationBanner result={reconcileResult} />
-          <MetricCards metrics={metrics} />
+          <MetricCards metrics={metrics} expectedMinutes={getExpectedMinutes(range, days) * scopedUsers.length} />
 
           {/* Operational insights */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
