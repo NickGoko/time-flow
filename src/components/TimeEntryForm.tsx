@@ -36,6 +36,7 @@ import {
   MINUTE_OPTIONS,
   MAX_DAILY_MINUTES,
   MAX_DAILY_HOURS,
+  HOURS_PER_DAY_TARGET,
   MAX_PAST_DAYS,
   toTotalMinutes,
   formatHours,
