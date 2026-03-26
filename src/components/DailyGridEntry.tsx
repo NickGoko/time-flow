@@ -377,7 +377,7 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
         <div>
           <Select value={row.activityTypeId} onValueChange={v => onUpdate(row.id, 'activityTypeId', v)} disabled={!row.phaseId}>
             <SelectTrigger className={row.errors.activityTypeId ? 'border-destructive' : ''}>
-              <SelectValue placeholder={row.phaseId ? 'Activity/task *' : 'Select project first'} />
+              <SelectValue placeholder={row.phaseId ? 'Activity/task' : 'Select project first'} />
             </SelectTrigger>
             <SelectContent>
               {activities.map(a => (
@@ -404,8 +404,8 @@ function GridRowEntry({ row, index, onUpdate, onRemove, canRemove, grouped, depa
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               {deptDeliverables.length === 0 ? (
-                <p className="text-sm text-muted-foreground italic py-1">
-                  No deliverables configured. Contact Admin.
+                <p className="text-xs text-muted-foreground italic py-1">
+                  No deliverables configured. Contact admin.
                 </p>
               ) : (
                 <Select value={row.deliverableType} onValueChange={v => onUpdate(row.id, 'deliverableType', v)} disabled={isLeave}>
